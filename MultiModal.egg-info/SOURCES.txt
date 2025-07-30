@@ -1,0 +1,10 @@
+setup.py
+MultiModal/__init__.py
+MultiModal.egg-info/PKG-INFO
+MultiModal.egg-info/SOURCES.txt
+MultiModal.egg-info/dependency_links.txt
+MultiModal.egg-info/top_level.txt
+MultiModal/models/__init__.py
+MultiModal/models/face_strea.py
+MultiModal/utils/__init__.py
+MultiModal/utils/losses.py

@@ -1,0 +1,4 @@
+{
+  "python.autoComplete.extraPaths": ["MultiModal"],
+  "python.analysis.extraPaths": ["MultiModal"]
+}
