@@ -9,6 +9,9 @@ import pandas as pd
 import random
 from torchvision.utils import make_grid
 import torchvision.transforms.functional as TF
+from einops import rearrange
+
+
 class Masking:
     def __init__(self,model_name,device,masking_ratio):
         self.model = timm.create_model(model_name, pretrained=True).eval().to(device)
@@ -62,8 +65,8 @@ class Masking:
         return batch_tensor.to(self.device)
 
         
-    def predict(self,df):
-        image_tensor = self.load_image(df)
+    def predict(self,image_tensor):
+        # image_tensor = self.load_image(df)
         with torch.no_grad():
             output = self.model(image_tensor)
 
@@ -78,8 +81,8 @@ class Masking:
         'k':k}
 
 
-    def returnn_attention_probs(self,df):
-        out=self.predict(df)
+    def returnn_attention_probs(self,image_tensor):
+        out=self.predict(image_tensor)
         for  key in out:
             print(f"{key}: {out[key].shape if isinstance(out[key], torch.Tensor) else out[key]}")
  
@@ -92,26 +95,32 @@ class Masking:
         return attn_probs
     
 
-    def mask_batch(self,patches):
+    def mask_batch(self,patches,image_tensor):
         """
+        It calculates attention maps from image_tensor and then apply masking on patches 
         Args:
-            df: DataFrame with column 'img_path'
+            image_tensor:[B,3,224,224]
+            patches:shape->[B, d, G, G]
         
         Returns:
-            masked_images: Tensor of shape [B, 3, 224, 224] with low-attention patches masked out
+            masked_images:  ([b, d, G, G])
+            masked_patches: ([b,d,n]) n= number of  unmasked patches 
         """
         # Step 1: Get attention probabilities for the batch
-        attn_probs = self.returnn_attention_probs(df)  # shape: [B, N]
+        attn_probs = self.returnn_attention_probs(image_tensor)  # shape: [B, N]
+        
+        # attn_probs=torch.sigmoid(torch.randn(50,784)).to(self.device)
+        print("attn probs",attn_probs.shape)
         B, N = attn_probs.shape
         grid_size = int(N ** 0.5)  # its H/patch size
         num_keep = int(N * (1 - self.masking_ratio))
 
         topk_indices = torch.topk(attn_probs, num_keep, dim=1).indices  # [B, num_keep]
-
-        # Step 3: Create binary mask: True = keep, False = mask
+        print("topk_indices shape:", topk_indices.shape)
+        
         mask = torch.zeros((B, N), dtype=torch.bool, device=attn_probs.device)
-        batch_indices = torch.arange(B, device=attn_probs.device).unsqueeze(1)
-        mask[batch_indices, topk_indices] = True
+        batch_indices = torch.arange(B, device=attn_probs.device).unsqueeze(1)  # (B, 1)
+        mask[batch_indices, topk_indices] = True  # Set topk positions to True per sample
         mask = mask.view(B, grid_size, grid_size)  # [B, G, G]
 
         mask=mask.unsqueeze(1)  # [B, 1, G, G]
@@ -120,7 +129,13 @@ class Masking:
         mask_images= patches * mask.float()  # [B, 96, G, G]
         print("mask_images shape:",mask_images.shape)
        
-        return mask_images
+        
+        flattened = rearrange(mask_images, "b d h w -> b d (h w)")  # (B, D, N)
+        topk_indices_exp = topk_indices.unsqueeze(1).expand(-1, flattened.shape[1], -1)  #  (B, D, K)
+        masked_patches = torch.gather(flattened, dim=2, index=topk_indices_exp)  # (B, D, K)
+
+        print("masked_patches shape:",masked_patches.shape)
+        return mask_images,masked_patches
 
     def visualize_attention_mask(self,images,mask_images,channels=16):
         """randomly select image from a batch and visualize the attention mask"""
@@ -168,9 +183,9 @@ if __name__ == "__main__":
     conv2d=nn.Conv2d(3,96,stride=8,padding=0,kernel_size=8).to(mask.device)
     patches=conv2d(image_tensor)  # shape: [B, 96, G, G]
 
-    mask_images=mask.mask_batch(patches)  # shape: [B, 96, G, G]
-    mask.visualize_attention_mask(image_tensor_vis, mask_images, channels=16)
+    mask_images=mask.mask_batch(patches,image_tensor)  # shape: [B, 96, G, G]
+    mask.visualize_attention_mask(image_tensor_vis, mask_images[0], channels=16)
 
 
 
-    
+    # abhi attn_probs df sai nikal rhi hai , isko tensor mai change kerta hun

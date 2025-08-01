@@ -12,8 +12,9 @@ import pytorch_lightning as pl
 from timm.layers.mlp import Mlp
 import pytorch_lightning as pl
 from MultiModal.utils.losses import ComputeLoss
+from MultiModal.models.masking import Masking
 from MultiModal.models.model_para import *
-
+import torchmetrics as tm
 
 
 #checked
@@ -308,15 +309,29 @@ class MambaAttnBlock(nn.Module):
          take x: (B, L, D) 
          returns x: (B, L, D)
 
+         Will not use windowed attention during pretraining
+
     """
 
-    def __init__(self, dim, use_mamba=False, use_attn=False,layer_scale=None,drop_path=0.0,window_size=7,temporal=False,attention_heads=4):
+    def __init__(
+            self,
+            dim,
+            use_mamba=False, 
+            use_attn=False,
+            layer_scale=None,
+            drop_path=0.0,
+            window_size=7,
+            temporal=False,
+            attention_heads=4,
+            use_window_attention=True
+            ):
         super().__init__()
         self.use_mamba = use_mamba
         self.use_attn = use_attn
         self.window_size = window_size
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
+
 
         if use_mamba:
             self.mamba = MambaVisionMixer(d_model=dim)
@@ -328,37 +343,41 @@ class MambaAttnBlock(nn.Module):
         self.mlp = Mlp(in_features=dim, hidden_features=dim * 4, drop=0.0)
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-
         use_layer_scale = layer_scale is not None
 
         self.gamma_1 = nn.Parameter(layer_scale * torch.ones(dim)) if use_layer_scale else 1
         self.gamma_2 = nn.Parameter(layer_scale * torch.ones(dim)) if use_layer_scale else 1
         self.temporal = temporal  # Whether to use temporal attention or not
+        self.use_window_attention=use_window_attention
+
 
     def forward(self, x):
-        # if self.use_mamba:
-        #     x = x + self.mamba(self.norm1(x))
-        #     x = x + self.mlp(self.norm1(x))
+        assert x.dim()==3 , "Input should be in the form (B,L,D)"
 
-        if self.use_attn:
-            if self.temporal:
-                x=self.attn(self.norm1(x))  # Apply attention directly
-            else:
-                B, N, C = x.shape
-                H= int(N**0.5)  # Assuming N is a perfect square for simplicity
-                W=H
-                x_img = x.transpose(1, 2).reshape(B, C, H, W) # Convert from token format (B, N, C) to image shape (B, C, H, W)
-                x_win = window_partition(x_img, window_size=self.window_size) #ouputxs (num_windows*B, window_size*window_size, C)
-                x_attent= self.attn(x_win)
-                x_img = x_img + self.drop_path(self.gamma_1 * window_reverse(x_attent, window_size=self.window_size, H=H, W=W))
-                x = x_img.flatten(2).transpose(1, 2)  #Convert back to (B, N, C) format
+        assert self.use_mamba ^ self.use_attn , " use_mamba or use_attn , only 1 variable can be true at a time"
 
-        else:
+        if self.use_attn and self.use_window_attention:
+            B, N, C = x.shape
+            H= int(N**0.5)  # Assuming N is a perfect square for simplicity
+            W=H
+            x_img = x.transpose(1, 2).reshape(B, C, H, W) # Convert from token format (B, N, C) to image shape (B, C, H, W)
+            x_win = window_partition(x_img, window_size=self.window_size) #ouputxs (num_windows*B, window_size*window_size, C)
+            x_attent= self.attn(x_win)
+            x_img = x_img + self.drop_path(self.gamma_1 * window_reverse(x_attent, window_size=self.window_size, H=H, W=W))
+            x = x_img.flatten(2).transpose(1, 2)  #Convert back to (B, N, C) format
+
+
+        elif self.use_attn and ( self.temporal or not self.use_window_attention ): # when use attention and ya to non window attn or temporal
+            x_attent=self.attn(x)
+            x = x + self.drop_path(self.gamma_1 * x_attent)
+
+        elif self.use_mamba:
             x = x + self.drop_path(self.gamma_1 * self.mamba(self.norm1(x)))
-
+        
+        else :
+            raise ValueError("No condition is satisfied")
+        
         return x + self.drop_path(self.gamma_2 * self.mlp(self.norm2(x)))
-
-
 
 
 #checked
@@ -372,7 +391,8 @@ class Downsample(nn.Module):
     def __init__(self,
                  dim,
                  keep_dim=False,
-                 depth_wise=False
+                 depth_wise=False,
+                 pretraining=True
                  ):
         """
         Args:
@@ -387,29 +407,44 @@ class Downsample(nn.Module):
         else:
             dim_out = 2 * dim
 
-        if depth_wise:
-            self.reduction=nn.Sequential(
-                nn.Conv2d(
-                dim, dim, kernel_size=3, stride=2, padding=1, groups=dim),
-                nn.BatchNorm2d(dim),
-                nn.ReLU(inplace=True),
-                nn.Conv2d(dim, dim_out, kernel_size=1),
-                nn.BatchNorm2d(dim_out),
-                nn.ReLU(inplace=True)
+        self.pretraining=pretraining
 
+        if pretraining:
+            self.reduction=nn.Sequential(
+               nn.Conv1d(dim,dim_out,kernel_size=4,stride=4,padding=0),
+               nn.BatchNorm1d(dim_out),
+               nn.ReLU(inplace=True)
+            )
+        else:
+            if depth_wise:
+                self.reduction=nn.Sequential(
+                    nn.Conv2d(
+                    dim, dim, kernel_size=2, stride=2, padding=0, groups=dim),
+                    nn.BatchNorm2d(dim),
+                    nn.ReLU(inplace=True),
+                    nn.Conv2d(dim, dim_out, kernel_size=1),
+                    nn.BatchNorm2d(dim_out),
+                    nn.ReLU(inplace=True)
+
+                )
+
+            else:
+                self.reduction = nn.Sequential(
+                    nn.Conv2d(dim, dim_out, 2, 2, 0, bias=False),
             )
 
-        else:
-            self.reduction = nn.Sequential(
-                nn.Conv2d(dim, dim_out, 3, 2, 1, bias=False),
-        )
-
     def forward(self, x):
-        H_new=int(pow(x.shape[1],0.5))
-        W_new=H_new
-        x=rearrange(x,"b (h w) d -> b d h w ",h=H_new,w=W_new)  # (B, N, C) -> (B, C, H, W)
+        assert x.dim()==3 , "Input should be in the form (B,L,D)"
+        if self.pretraining:
+            x=rearrange(x,"b n d -> b d n ")
+        else:
+            H_new=int(pow(x.shape[1],0.5))
+            W_new=H_new
+            x=rearrange(x,"b (h w) d -> b d h w ",h=H_new,w=W_new)  # (B, N, C) -> (B, C, H, W)
+
         x = self.reduction(x)
-        x=rearrange(x ," b d h w -> b (h w) d ")
+        x=rearrange(x,"b d n -> b n d ") if self.pretraining else rearrange(x ," b d h w -> b (h w) d ")
+        
         return x
 
 
@@ -424,6 +459,7 @@ def window_reverse(windows, window_size, H, W):
     Returns:
         x: (B, C, H, W)
     """
+    assert x.dim()==4 , "Input should be in the form (num_windows*B, window_size, window_size, C)"
     B = int(windows.shape[0] / (H * W / window_size / window_size))
     x = windows.reshape(B, H // window_size, W // window_size, window_size, window_size, -1)
     x = x.permute(0, 5, 1, 3, 2, 4).reshape(B,windows.shape[2], H, W)
@@ -433,15 +469,16 @@ def window_reverse(windows, window_size, H, W):
 
 #checked
 class stageBlock(nn.Module):  #Hybrid mamba transformer block
-    def __init__(self, num_layers, dim,window_size=7,temporal=False,attention_heads=4):
+    def __init__(self, num_layers, dim,window_size=7,temporal=False,attention_heads=4,use_window_attention=True):
         """Expects input in the form (B,L,D)"""
         super().__init__()
         self.blocks = nn.Sequential(
-            *[MambaAttnBlock(dim, use_mamba=True,window_size=window_size,temporal=temporal,attention_heads=attention_heads) for _ in range(num_layers)],
-            *[MambaAttnBlock(dim, use_attn=True,window_size=window_size,temporal=temporal,attention_heads=attention_heads) for _ in range(num_layers)]
+            *[MambaAttnBlock(dim, use_attn=False,use_mamba=True,window_size=window_size,temporal=temporal,attention_heads=attention_heads,use_window_attention=use_window_attention) for _ in range(num_layers)],
+            *[MambaAttnBlock(dim, use_attn=True,use_mamba=False,window_size=window_size,temporal=temporal,attention_heads=attention_heads,use_window_attention=use_window_attention) for _ in range(num_layers)]
         )
 
     def forward(self, x):
+        assert x.dim()==3 , "Input should be in the form (B,L,D)"
         return self.blocks(x)
 
 
@@ -461,7 +498,8 @@ class MY_model(nn.Module):
         window_size,
         cross_heads,
         cross_attention=True,
-        attention_heads=None
+        attention_heads=None,
+        masking_ratio=0.65
         ):
         super().__init__()
         self.patch_dim = patch_dim
@@ -471,15 +509,22 @@ class MY_model(nn.Module):
         self.W_img = W_img
         self.num_layers = num_layers
         self.window_size = window_size
-        
+        self.masking_ratio=masking_ratio
       
-        self.stage1=stageBlock(num_layers=2,dim=patch_dim,window_size=window_size[0],attention_heads=attention_heads[0])
-        self.stage2=stageBlock(num_layers=2,dim=patch_dim*2,window_size=window_size[1],attention_heads=attention_heads[1])
-        self.stage3=stageBlock(num_layers=2,dim=patch_dim*4,window_size=window_size[2],temporal=True, attention_heads=attention_heads[2])
-        self.stage4=stageBlock(num_layers=2,dim=patch_dim*8,window_size=window_size[3],temporal=True, attention_heads=attention_heads[3])
+        if pretrain:
+            self.mask=Masking("vit_base_patch8_224.dino",device=device,masking_ratio=0.65)
+            self.use_window_attention=False 
 
-        self.down1=Downsample(dim=patch_dim,depth_wise=True,keep_dim=False)
-        self.down2=Downsample(dim=patch_dim*2,depth_wise=True,keep_dim=False)
+        else: 
+            self.use_window_attention=True
+
+        self.stage1=stageBlock(num_layers=2,dim=patch_dim,window_size=window_size[0],temporal=False,attention_heads=attention_heads[0],use_window_attention=self.use_window_attention)
+        self.stage2=stageBlock(num_layers=2,dim=patch_dim*2,window_size=window_size[1],temporal=False,attention_heads=attention_heads[1],use_window_attention=self.use_window_attention)
+        self.stage3=stageBlock(num_layers=2,dim=patch_dim*4,window_size=window_size[2],temporal=True, attention_heads=attention_heads[2],use_window_attention=False)
+        self.stage4=stageBlock(num_layers=2,dim=patch_dim*8,window_size=window_size[3],temporal=True, attention_heads=attention_heads[3],use_window_attention=False)
+
+        self.down1=Downsample(dim=patch_dim,depth_wise=True,keep_dim=False,pretraining=pretrain)
+        self.down2=Downsample(dim=patch_dim*2,depth_wise=True,keep_dim=False,pretraining=pretrain)
         self.down3=nn.Linear(patch_dim*4,patch_dim*8)  # linear bcoz, here we have input as( B,T,C) and output as (B,T,C)
 
         self.patching = PatchEmbed(patch_dim=patch_dim, patch_size=patch_size, num_frames=num_frames, H_img=H_img, W_img=W_img)
@@ -491,23 +536,35 @@ class MY_model(nn.Module):
 
         self.classifier=nn.Linear(patch_dim*8, 1)  
         self.loss=ComputeLoss(pretrain=pretrain) 
-            
 
 
-    def forward(self,x,debug=False):
+        self.accuracy = tm.Accuracy(task="binary", threshold=0.5)
+        self.f1_score = tm.F1Score(task="binary", threshold=0.5)
+        self.precision = tm.Precision(task="binary", threshold=0.5)
+        self.recall = tm.Recall(task="binary", threshold=0.5)
+        
+
+
+
+    def forward(self,x,debug=False,image_tensor=None):
         B,T,C,H,W = x.shape
+        patches=self.patching(x)  # (B*T, N, D)
+        
         if self.pretrain:
-            pass
-        else:
-            patches=self.patching(x)  # (B*T, N, D)
+            G=int(patches.shape[1]**0.5)
+            patches=rearrange(patches," b (h w) d -> b d h w ", h=G)  # (B*T, D, G , G)
+            mask_images,masked_patches=self.mask.mask_batch(patches=patches,image_tensor=image_tensor)
+            patches=rearrange(masked_patches," b d n -> b n d")
+            print("patches ki shape" ,patches.shape)
 
         x1= self.stage1(patches)  # (B*T, N, D)
+        print("hello")
         x1=self.down1(x1)  # (B*T, N/4, 2D)
         x2= self.stage2(x1)  # (B*T, N/4, 2D)
         x2=self.down2(x2)  # (B*T, N/16, 4D)
 
-        x2= self.cross_attention(x2)
-        x3= self.stage3(x2)  # (B*T, N/16, 4D)
+        x3= self.cross_attention(x2) #(B, T, 4D)
+        x3= self.stage3(x3)  # (B*T, N/16, 4D)
         x3=self.down3(x3)  # (B*T, N/64, 8D)
         x4= self.stage4(x3)  # (B*T, N/64, 8D)
 
@@ -527,6 +584,13 @@ class MY_model(nn.Module):
             print(f"Logits shape: {logits.shape}")
             print(f"Output shape: {out.shape}")
         return out  # (B*T, N/64, 8D)
+    
+
+    def training_step(self,batch,batch_idx):
+        pass
+    
+
+    
 
 
 
@@ -539,8 +603,9 @@ if __name__=="__main__":
 
 
         x = torch.randn(BATCH, NUM_FRAMES, NUM_CHANNELS, H_IMG, W_IMG).to(device)
+        image_tensor=torch.randn(BATCH*NUM_FRAMES, NUM_CHANNELS, H_IMG, W_IMG).to(device)
         model=MY_model(
-        pretrain=False,
+        pretrain=True,
         patch_size=PATCHS_SIZE,
         patch_dim=PATCH_DIM,
         num_frames=NUM_FRAMES,
@@ -558,7 +623,7 @@ if __name__=="__main__":
         torch.cuda.synchronize()
         starter.record()
         # out= cross_attention(out)
-        out=model(x,debug=True)  
+        out=model(x,debug=True,image_tensor=image_tensor)  
         print(out.shape)
 
 
