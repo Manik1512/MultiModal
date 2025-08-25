@@ -10,7 +10,7 @@ import random
 from torchvision.utils import make_grid
 import torchvision.transforms.functional as TF
 from einops import rearrange
-
+from MultiModal.utils.losses import Pretraining_loss
 
 class Masking:
     def __init__(self,model_name,device,masking_ratio):
@@ -92,7 +92,7 @@ class Masking:
         attn_probs = F.softmax(attn_scores, dim=-1).squeeze(2)  # (B, heads, N)
         attn_probs = attn_probs.mean(1)# (N,)
         print(attn_probs.shape)
-        return attn_probs
+        return attn_probs,out["ouput_patches"]
     
 
     def mask_batch(self,patches,image_tensor):
@@ -107,35 +107,49 @@ class Masking:
             masked_patches: ([b,d,n]) n= number of  unmasked patches 
         """
         # Step 1: Get attention probabilities for the batch
-        attn_probs = self.returnn_attention_probs(image_tensor)  # shape: [B, N]
-        
-        # attn_probs=torch.sigmoid(torch.randn(50,784)).to(self.device)
-        print("attn probs",attn_probs.shape)
+
+        starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+        torch.cuda.synchronize()
+        starter.record()
+        attn_probs,out = self.returnn_attention_probs(image_tensor)  # shape: [B, N]
+
+        ender.record()
+        torch.cuda.synchronize()  # Wait for kernel to finish 
         B, N = attn_probs.shape
         grid_size = int(N ** 0.5)  # its H/patch size
         num_keep = int(N * (1 - self.masking_ratio))
 
         topk_indices = torch.topk(attn_probs, num_keep, dim=1).indices  # [B, num_keep]
-        print("topk_indices shape:", topk_indices.shape)
-        
         mask = torch.zeros((B, N), dtype=torch.bool, device=attn_probs.device)
         batch_indices = torch.arange(B, device=attn_probs.device).unsqueeze(1)  # (B, 1)
         mask[batch_indices, topk_indices] = True  # Set topk positions to True per sample
         mask = mask.view(B, grid_size, grid_size)  # [B, G, G]
 
         mask=mask.unsqueeze(1)  # [B, 1, G, G]
-        print("mask shape:",mask.shape)
-        print("patches shape:",patches.shape)
-        mask_images= patches * mask.float()  # [B, 96, G, G]
-        print("mask_images shape:",mask_images.shape)
        
-        
+        mask_images= patches * mask.float()  # [B, 96, G, G]
+           
         flattened = rearrange(mask_images, "b d h w -> b d (h w)")  # (B, D, N)
         topk_indices_exp = topk_indices.unsqueeze(1).expand(-1, flattened.shape[1], -1)  #  (B, D, K)
         masked_patches = torch.gather(flattened, dim=2, index=topk_indices_exp)  # (B, D, K)
 
+        out_without_cls=out[:,1:,:]
+        cls_token=out[:,1:2,:]
+        topk_indices_exp = topk_indices.unsqueeze(1).expand(-1,out_without_cls.shape[2] , -1)  #  (B, D, K)
+        unmasked_teachers_ouput = torch.gather(rearrange(out_without_cls,"b n d -> b d n"), dim=2, index=topk_indices_exp)  # (B, D, K)4
+        unmasked_teachers_ouput=rearrange(unmasked_teachers_ouput,"b d n -> b n d") # out of teacher , but only unmasked patches , so to compute loss
+
+        print(f"Time taken: {starter.elapsed_time(ender):.3f} ms")
+        print("topk_indices shape:", topk_indices.shape) #topk_indices contains indices of unmasked patches
+        print("mask shape:",mask.shape)
+        print("patches shape:",patches.shape)
+        print("mask_images shape:",mask_images.shape)
         print("masked_patches shape:",masked_patches.shape)
-        return mask_images,masked_patches
+        print("unmasked_teachers_ouput",unmasked_teachers_ouput.shape)
+        print("cls_token",cls_token.shape)
+        return mask_images,masked_patches,cls_token,unmasked_teachers_ouput
+
+  
 
     def visualize_attention_mask(self,images,mask_images,channels=16):
         """randomly select image from a batch and visualize the attention mask"""
@@ -183,8 +197,17 @@ if __name__ == "__main__":
     conv2d=nn.Conv2d(3,96,stride=8,padding=0,kernel_size=8).to(mask.device)
     patches=conv2d(image_tensor)  # shape: [B, 96, G, G]
 
-    mask_images=mask.mask_batch(patches,image_tensor)  # shape: [B, 96, G, G]
-    mask.visualize_attention_mask(image_tensor_vis, mask_images[0], channels=16)
+    
+    starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+    torch.cuda.synchronize()
+    starter.record()
+    mask_images,masked_patches,cls_token,unmasked_teachers_ouput=mask.mask_batch(patches,image_tensor)  # shape: [B, 96, G, G]
+    ender.record()
+    torch.cuda.synchronize()  # Wait for kernel to finish
+    print(f"Time taken: {starter.elapsed_time(ender):.3f} ms") 
+
+    
+    mask.visualize_attention_mask(image_tensor_vis, mask_images, channels=16)
 
 
 

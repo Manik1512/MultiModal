@@ -1,0 +1,5 @@
+avsr_path: "/home/manik/Downloads/avsr_trlrwlrs2lrs3vox2avsp_base.pth"
+trainable_audio: False
+gated_av_fusion: False
+feature_dim: 768
+dropout_rate: 0.4
