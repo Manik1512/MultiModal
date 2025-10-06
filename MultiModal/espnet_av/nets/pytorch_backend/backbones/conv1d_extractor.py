@@ -26,6 +26,8 @@ class Conv1dResNet(torch.nn.Module):
 
         :param xs_pad: torch.Tensor, batch of padded input sequences (B, Tmax, idim)
         """
+        xs_pad=xs_pad.squeeze(0)
+        # print("input to conv1d extractor",xs_pad.shape)
         B, T, C = xs_pad.size()
         xs_pad = xs_pad[:, : T // 640 * 640, :]
         xs_pad = xs_pad.transpose(1, 2)

@@ -38,9 +38,11 @@ class Conv3dResNet(torch.nn.Module):
         )
 
     def forward(self, xs_pad):
-        xs_pad = xs_pad.transpose(1, 2)  # [B, T, C, H, W] -> [B, C, T, H, W]
-
+        # print("checking1")
+        xs_pad=xs_pad.squeeze(0)
+        # print("input to conv3d extractor",xs_pad.shape)
         B, C, T, H, W = xs_pad.size()
+        # print("checking2")
         xs_pad = self.frontend3D(xs_pad)
         Tnew = xs_pad.shape[2]
         xs_pad = threeD_to_2D_tensor(xs_pad)

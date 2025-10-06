@@ -3,10 +3,9 @@
 
 # Copyright 2023 Imperial College London (Pingchuan Ma)
 # Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
-
+"""contains augmentations"""
 import os
 import random
-
 import sentencepiece
 import torch
 import torchaudio
@@ -31,6 +30,16 @@ DICT_PATH = os.path.join(
     "unigram5000_units.txt",
 )
 
+class ModalityDropout(torch.nn.Module):
+    def __init__(self, p):  # probability of dropping audio
+        super().__init__()
+        self.p = p
+
+    def forward(self, x):
+        if torch.rand(1).item() < self.p:
+            return torch.zeros_like(x),torch.tensor(1, dtype=torch.long, requires_grad=False)
+        return x,torch.tensor(0, dtype=torch.long, requires_grad=False)
+
 
 class FunctionalModule(torch.nn.Module):
     def __init__(self, functional):
@@ -42,6 +51,10 @@ class FunctionalModule(torch.nn.Module):
 
 
 class AdaptiveTimeMask(torch.nn.Module):
+    """
+    window-> maximum lenght of mask , choosen randomly bw 0 and window 
+    stride-> interval between two masks , i.e -> AdaptiveTimeMask(6400, 16000) means , max of 6400 samples will be masked every 16000 samples
+    """
     def __init__(self, window, stride):
         super().__init__()
         self.window = window
@@ -62,6 +75,7 @@ class AdaptiveTimeMask(torch.nn.Module):
             t_end += t_start
             cloned[t_start:t_end] = 0
         return cloned
+
 
 
 class AddNoise(torch.nn.Module):
@@ -109,32 +123,41 @@ class VideoTransform:
         # rtype: T x 1 x H x W
         return self.video_pipeline(sample)
 
-
 class AudioTransform:
-    def __init__(self, subset, snr_target=None):
+    """
+    It returns a flag too , keep in mind while using it
+    flag->1 means audio is dropped
+    flag->0 means audio is not dropped
+    """
+    def __init__(self, subset, snr_target=None,modality_drop_rate=None):
         if subset == "train":
-            self.audio_pipeline = torch.nn.Sequential(
-                AdaptiveTimeMask(6400, 16000),
-                AddNoise(),
-                FunctionalModule(
-                    lambda x: torch.nn.functional.layer_norm(x, x.shape, eps=1e-8)
-                ),
+            self.time_mask = AdaptiveTimeMask(6400, 16000)
+            self.dropout = ModalityDropout(p=modality_drop_rate)   # will output (x, flag)
+            self.noise = AddNoise()
+            self.norm = FunctionalModule(
+                lambda x: torch.nn.functional.layer_norm(x, x.shape, eps=1e-8)
             )
-        elif subset == "val" or subset == "test":
-            self.audio_pipeline = torch.nn.Sequential(
-                AddNoise(snr_target=snr_target)
-                if snr_target is not None
-                else FunctionalModule(lambda x: x),
-                FunctionalModule(
-                    lambda x: torch.nn.functional.layer_norm(x, x.shape, eps=1e-8)
-                ),
+        elif subset in ["val", "test"]:
+            self.noise = AddNoise(snr_target=snr_target) if snr_target is not None else None
+            self.norm = FunctionalModule(
+                lambda x: torch.nn.functional.layer_norm(x, x.shape, eps=1e-8)
             )
+            self.dropout = None
+            self.time_mask = None
 
     def __call__(self, sample):
         # sample: T x 1
-        # rtype: T x 1
-        return self.audio_pipeline(sample)
+        flag=torch.tensor(0, dtype=torch.long, requires_grad=False)
+        if self.time_mask:
+            sample = self.time_mask(sample)
 
+        if self.dropout:
+            sample, flag = self.dropout(sample)
+        # if self.noise:
+        #     sample = self.noise(sample)
+        sample = self.norm(sample)
+        return sample, flag
+    
 
 class TextTransform:
     """Mapping Dictionary Class for SentencePiece tokenization."""
@@ -169,3 +192,13 @@ class TextTransform:
     def _ids_to_str(self, token_ids, char_list):
         token_as_list = [char_list[idx] for idx in token_ids]
         return "".join(token_as_list).replace("<space>", " ")
+    
+
+
+if __name__ == "__main__":
+    audio = torch.randn((69632,1))
+    audio_transform = AudioTransform("train")
+
+    out = audio_transform(audio)
+    print(out[0].shape,out[1])
+    print(out[1].item())  

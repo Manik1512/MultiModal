@@ -1,0 +1,14 @@
+val dataset::
+    no modality drop
+    always taken 0-num_frames to get consistent results (no randomisation)
+    no sampling 
+    shuffle=False in batch loader
+
+test dataset-> will use tta here 
+
+
+split::
+    -the split is in such a way that => real samples are seperartely sampled in 70:15:15  so that sampling wouldnt be immbalance , morever we use balance sampling during training 
+    - no oversampling in validation and tesing 
+
+

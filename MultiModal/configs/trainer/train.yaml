@@ -1,5 +1,10 @@
 precision: 32
-max_epochs: 75
+batch_size: 2
+learning_rate: 1e-3
+weight_decay: 1e-4
+max_epochs: 25
+modality_drop_rate: 0.4
+num_workers: 8
 num_nodes: 1
 gpus: -1
 sync_batchnorm: True
@@ -9,3 +14,7 @@ accumulate_grad_batches: 1
 gradient_clip_val: 5.0
 replace_sampler_ddp: False
 resume_from_checkpoint:
+preprocessed_dir: "/home/manik/Downloads/FakeAvCelebPreprocessed"
+csv_file: "/home/manik/Downloads/FakeAvCelebPreprocessed/labels_split.csv"
+num_frames: 25
+logg_dir: "/home/manik/Documents/MultiModal/MultiModal/experiments/av_stream"
