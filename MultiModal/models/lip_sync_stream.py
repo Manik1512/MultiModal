@@ -11,7 +11,14 @@ import torch.functional as F
 from einops import rearrange
 import torchmetrics as tm
 from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
-
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+import torchmetrics# from torchmetrics.classification import (
+#     BinaryPrecision, BinaryRecall, BinaryF1Score,
+#     BinaryAUROC, BinaryAveragePrecision
+# )
+import seaborn as sns
+import matplotlib.pyplot as plt
+import gc
 
 class Feature_extraction_av(LightningModule):
     def __init__(self, cfg,debug):
@@ -183,7 +190,7 @@ class Feature_extraction_av(LightningModule):
 
 
 class lip_sync_stream(LightningModule):
-    def __init__(self, cfg,debug):
+    def __init__(self, cfg,debug,steps_per_epoch=None,unfreezed_conformers=0):
         super().__init__()
         self.save_hyperparameters(cfg)
         self.cfg = cfg
@@ -194,23 +201,22 @@ class lip_sync_stream(LightningModule):
         self.classifier = nn.Sequential(
             nn.Linear(self.feature_dim, 512),
             nn.LayerNorm(512),
-            nn.GELU(),  
+            nn.ReLU(),  
             nn.Dropout(self.cfg.model.lip_sync_model.dropout_rate),
-
-            nn.Linear(512, 128),
-            nn.LayerNorm(128),
-            nn.GELU(),  
-            nn.Dropout(self.cfg.model.lip_sync_model.dropout_rate),
-
-            nn.Linear(128, 1),
+            nn.Linear(512, 1),
         )
 
+        self.train_auc = torchmetrics.AUROC(task="binary")
+        self.val_auc = torchmetrics.AUROC(task="binary")
         self.criterion = nn.BCEWithLogitsLoss()
 
-        self.accuracy = tm.Accuracy(task="binary", threshold=0.5)
-        self.f1_score = tm.F1Score(task="binary", threshold=0.5)
-        self.precision = tm.Precision(task="binary", threshold=0.5)
-        self.recall = tm.Recall(task="binary", threshold=0.5)
+        # self.accuracy = tm.Accuracy(task="binary", threshold=0.5, average=None)
+        # self.f1_score = tm.F1Score(task="binary", threshold=0.5 , average=None)
+        # self.precision = tm.Precision(task="binary", threshold=0.5 , average=None)
+        # self.recall = tm.Recall(task="binary", threshold=0.5 , average=None)
+
+
+
         # self.train_metrics = nn.ModuleDict({k: m.clone() for k, m in metrics.items()})
         self.debug=debug
 
@@ -228,8 +234,62 @@ class lip_sync_stream(LightningModule):
             param.requires_grad = False
 
 
-        self.validation_outputs = []
+        count_till=12-unfreezed_conformers
+        count=0
+        # for layer in self.feature_extractor.model.aux_encoder.encoders:             # yeh last ke unfreeze kerta hai 
 
+        #     if count >=count_till:
+        #         for param in layer.parameters():
+        #             param.requires_grad = True
+        #     count=count+1
+        # count=0
+
+        # for layer in self.feature_extractor.model.encoder.encoders:
+
+        #     if count >=count_till:
+        #         for param in layer.parameters():
+        #             param.requires_grad = True
+        #     count=count+1
+
+
+        for layer in self.feature_extractor.model.aux_encoder.encoders:             
+
+            if count <unfreezed_conformers:
+                for param in layer.parameters():
+                  param.requires_grad = True
+
+            else:
+                layer=nn.Identity()
+            count=count+1
+        count=0
+
+        for layer in self.feature_extractor.model.encoder.encoders:
+
+            if count <unfreezed_conformers:
+                for param in layer.parameters():
+                   param.requires_grad = True
+
+            else:
+                layer=nn.Identity()
+            
+            count=count+1
+
+
+
+        # self.validation_outputs = []
+        self.steps_per_epoch=steps_per_epoch
+
+
+        self.val_tp = 0
+        self.val_fp = 0
+        self.val_fn = 0
+        self.val_tn = 0
+
+        self.train_tp = 0
+        self.train_fp = 0
+        self.train_fn = 0
+        self.train_tn = 0
+            
     def forward(self, video, audio):
         video = rearrange(video, 'b t c h w -> b c t h w')
         features =self.feature_extractor(video, audio)
@@ -244,8 +304,27 @@ class lip_sync_stream(LightningModule):
 
     def training_step(self, batch, batch_idx):
         loss, logits, y = self._step(batch, step_type="train")
-        probs = torch.sigmoid(logits).detach().cpu()
-        y = y.detach().cpu()
+        # probs = torch.sigmoid(logits).detach().cpu()
+        probs = torch.sigmoid(logits)
+        preds = (probs > 0.5).int()
+
+        preds = preds.detach()
+        y = y.detach()
+
+        tp = ((preds == 1) & (y == 1)).sum().item()
+        fp = ((preds == 1) & (y == 0)).sum().item()
+        fn = ((preds == 0) & (y == 1)).sum().item()
+        tn = ((preds == 0) & (y == 0)).sum().item()
+
+        self.train_auc.update(probs, y)
+
+
+        self.train_tp += tp
+        self.train_fp += fp
+        self.train_fn += fn
+        self.train_tn += tn
+
+        
         self.log("train/loss", loss, prog_bar=True, on_step=True, on_epoch=True)
         return loss
 
@@ -253,20 +332,88 @@ class lip_sync_stream(LightningModule):
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
         loss, logits, y = self._step(batch, step_type="val")
-
-        # keep everything on GPU for loss, move to CPU only for metrics if needed
+        logits=logits.detach()
+        loss= loss.detach()
         probs = torch.sigmoid(logits)
+        probs=probs.detach()
+        preds = (probs > 0.5).int()
 
-        # update metrics directly (Lightning/TorchMetrics can handle GPU tensors)
-        self.accuracy.update(probs, y.int())
-        self.f1_score.update(probs, y.int())
-        self.precision.update(probs, y.int())
-        self.recall.update(probs, y.int())
+        preds = preds.detach()
+        y = y.detach()
 
-        # log the loss as scalar
+        tp = ((preds == 1) & (y == 1)).sum().item()
+        fp = ((preds == 1) & (y == 0)).sum().item()
+        fn = ((preds == 0) & (y == 1)).sum().item()
+        tn = ((preds == 0) & (y == 0)).sum().item()
+
+        self.val_auc.update(probs, y)
+
+
+
+        self.val_tp += tp
+        self.val_fp += fp
+        self.val_fn += fn
+        self.val_tn += tn
+
         self.log("val_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
+        return None
 
-        return loss
+      
+    def on_train_epoch_end(self):
+        precision = self.train_tp / (self.train_tp + self.train_fp + 1e-8)
+        recall = self.train_tp / (self.train_tp + self.train_fn + 1e-8)
+        f1 = 2 * precision * recall / (precision + recall + 1e-8)
+        accuracy = (self.train_tp + self.train_tn) / (
+            self.train_tp + self.train_tn + self.train_fp + self.train_fn + 1e-8
+        )
+
+        self.log("train_auc", self.train_auc, on_step=False, on_epoch=True, prog_bar=True)
+        self.log_dict({
+            "train_accuracy": accuracy,
+            "train_f1": f1,
+            "train_precision": precision,
+            "train_recall": recall,
+            # "train_auc": auc
+        }, prog_bar=True)
+
+        # Reset for next epoch
+        self.train_tp = self.train_fp = self.train_fn = self.train_tn = 0
+
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
+    def on_validation_epoch_end(self):
+        precision = self.val_tp / (self.val_tp + self.val_fp + 1e-8)
+        recall = self.val_tp / (self.val_tp + self.val_fn + 1e-8)
+        f1 = 2 * precision * recall / (precision + recall + 1e-8)
+        accuracy = (self.val_tp + self.val_tn) / (
+            self.val_tp + self.val_tn + self.val_fp + self.val_fn + 1e-8
+        )
+
+        fig = self.plot_confusion_matrix_from_values(self.val_tp, self.val_fp, self.val_tn, self.val_fn)
+        self.logger.experiment.add_figure("Confusion Matrix", fig, self.current_epoch)
+        plt.close(fig)
+
+
+        self.log("val_auc", self.val_auc, on_step=False, on_epoch=True, prog_bar=True)
+
+        self.log_dict({
+            "val_accuracy": accuracy,
+            "val_f1": f1,
+            "val_precision": precision,
+            "val_recall": recall,
+            # "val_auc": auc
+        }, prog_bar=True,
+        on_epoch=True
+        )
+
+        # Reset for next epoch
+        self.val_tp = self.val_fp = self.val_fn = self.val_tn = 0
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
 
     def _step(self, batch, step_type):
         video = batch["video"]
@@ -278,41 +425,42 @@ class lip_sync_stream(LightningModule):
 
         return loss, logits, y
 
-    def on_validation_epoch_end(self):
-        self.log_dict({
-            "val_accuracy": self.accuracy.compute(),
-            "val_f1": self.f1_score.compute(),
-            "val_precision": self.precision.compute(),
-            "val_recall": self.recall.compute(),
-        }, prog_bar=True)
 
-        # Reset metrics
-        self.accuracy.reset()
-        self.f1_score.reset()
-        self.precision.reset()
-        self.recall.reset()
-            
+
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
             self.parameters(),
             lr=self.cfg.trainer.learning_rate,
             weight_decay=self.cfg.trainer.weight_decay
         )
-        scheduler = {
-            "scheduler": torch.optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer,
-                mode='min',
-                factor=0.5,
-                patience=3,
-                verbose=True,
-                min_lr=1e-6
-            ),
-            "monitor": "val_loss",   # must match exact key from self.log
-            "interval": "epoch",
-            "frequency": 1
-        }
-        return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
+        # steps_per_epoch = self.steps_per_epoch
+        # t_0 = 3 * steps_per_epoch  # one cyclee is 5 epochs
+
+        # scheduler = CosineAnnealingWarmRestarts(
+        #     optimizer,
+        #     T_0=t_0,      # Number of steps in the first restart cycle.
+        #     T_mult=1,   # Factor by which to increase T_i after a restart. T_mult=1 means the cycle length is constant.
+        #     eta_min=1e-6, # Minimum learning rate.
+        # )
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", patience=3, factor=0.5, verbose=True)
+
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {"scheduler": scheduler, "monitor": "val_loss", "interval": "epoch", "frequency": 1}
+        }
+    def plot_confusion_matrix_from_values(self,tp, fp, tn, fn, class_names=["Negative", "Positive"]):
+        cm = [[tn, fp],
+            [fn, tp]]
+        
+        fig, ax = plt.subplots(figsize=(4, 4))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                    xticklabels=class_names, yticklabels=class_names, ax=ax)
+        ax.set_xlabel("Predicted")
+        ax.set_ylabel("True")
+        plt.tight_layout()
+        return fig
 
 
 if __name__ == "__main__":
@@ -333,4 +481,8 @@ if __name__ == "__main__":
 
     # summary(model, input_size=[video.shape,audio.shape])
 
-    # print(model.parameters)
+    print(model.feature_extractor.model.aux_encoder.encoders[0])
+    len=0
+    for encoder_layer in model.feature_extractor.model.aux_encoder.encoders:
+        len=len+1
+    print("len of audio encoder layers",len)    

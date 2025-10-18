@@ -1,14 +1,16 @@
-
+import pytorch_lightning as pl 
+pl.seed_everything(42, workers=True)
 from datamodule import transforms ,sampler
 from datamodule import av_dataset
 from pytorch_lightning.loggers import TensorBoardLogger
 import torch 
 from datetime import datetime
 from models import lip_sync_stream
-from pytorch_lightning.callbacks import EarlyStopping
+from pytorch_lightning.callbacks import EarlyStopping,ModelCheckpoint
 from hydra import  compose,initialize
 initialize(config_path="configs", version_base="1.3")
 import pytorch_lightning as pl
+import os
 
 cfg = compose(
         config_name="config",
@@ -19,7 +21,9 @@ train_dataset = av_dataset.CELEB_AV(
     unprocessed_dir=None,
     csv_file=cfg.trainer.csv_file,
     subset="train",
-    modality_drop_rate=cfg.trainer.modality_drop_rate,
+    # modality_drop_rate=cfg.trainer.modality_drop_rate,
+    modality_drop_rate=0,
+
     preprocessed_dir=cfg.trainer.preprocessed_dir,
     num_frames=cfg.trainer.num_frames,
     debug=False
@@ -37,30 +41,70 @@ val_dataset = av_dataset.CELEB_AV(
 
 
 SAVE_DIR = cfg.trainer.logg_dir
-EXPERIMENT_NAME = "feature_extractor_freezed"
-RUN_NAME = f"run_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
-# log_path = os.path.join(SAVE_DIR, EXPERIMENT_NAME, RUN_NAME)
+version="OversamplingBalancedBatchSampler"
+EXPERIMENT_NAME = "lip_stream/fine_tune_AVSREAM/Start_4_unfreezed_BATCH16"
 logger = TensorBoardLogger(
         save_dir=SAVE_DIR,
         name=EXPERIMENT_NAME,
-        version=RUN_NAME
+        version=version
     )
+ckpt_saved_path=os.path.join(SAVE_DIR,EXPERIMENT_NAME,version)
 
-sampler = sampler.BalancedBatchSampler(train_dataset, batch_size=2)
-
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=cfg.trainer.batch_size,shuffle=True,num_workers=cfg.trainer.num_workers,pin_memory=True)
-val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=cfg.trainer.batch_size,num_workers=cfg.trainer.num_workers,pin_memory=True,shuffle=False)
+# from torch.utils.data import  WeightedRandomSampler
+# from collections import Counter
 
 
-av_model=lip_sync_stream.lip_sync_stream(cfg,debug=False)
 
+# sampler = sampler.BalancedBatchSampler(train_dataset, batch_size=cfg.trainer.batch_size)
+
+sampler = sampler.OversamplingBalancedBatchSampler(train_dataset, batch_size=cfg.trainer.batch_size)
+
+
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_sampler=sampler,num_workers=cfg.trainer.num_workers,pin_memory=True)
+# val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=cfg.trainer.batch_size,num_workers=cfg.trainer.num_workers,pin_memory=True,shuffle=False)
+ 
+
+val_loader = torch.utils.data.DataLoader(
+    val_dataset,
+    batch_size=cfg.trainer.batch_size,
+    num_workers=0   ,          # <— use 0 or 1
+    pin_memory=False,       # <— turn off for validation
+    shuffle=False,
+    persistent_workers=False
+)
+
+
+steps_per_epoch = len(train_loader)
+print(f"Steps per epoch: {steps_per_epoch}")
+
+av_model=lip_sync_stream.lip_sync_stream(cfg,debug=False,steps_per_epoch=steps_per_epoch,unfreezed_conformers=4)
+
+best_model_callback = ModelCheckpoint(
+    dirpath=os.path.join(ckpt_saved_path,'checkpoints/'),
+    filename='best_model-{epoch:02d}-{val_loss:.2f}',
+    monitor='val_loss',
+    mode='min',
+    save_top_k=1, # This is the key argument! It saves the single best model.
+)
+latest_model_callback = ModelCheckpoint(
+    dirpath=os.path.join(ckpt_saved_path,'checkpoints/'),
+    filename='latest_model-{epoch:02d}',
+    save_top_k=0, # Does not save based on a metric
+    save_last=True # This is the key argument to save the final model!
+)
+early_stopping_callback = EarlyStopping(
+    monitor='val_loss',
+    patience=7,
+    mode='min'
+)
 
 trainer = pl.Trainer(
         max_epochs=cfg.trainer.max_epochs,
         accelerator="auto", # Automatically uses GPU if available
         logger=logger,
         precision="16-mixed",
-        # callbacks=EarlyStopping(monitor='val/loss', patience=3, mode='min')
+        callbacks=[best_model_callback,latest_model_callback],
     )
 
-trainer.fit(av_model,train_dataloaders=train_loader,val_dataloaders=val_loader)
+# trainer.fit(av_model,train_dataloaders=train_loader,val_dataloaders=val_loader,ckpt_path="/home/manik/Documents/experiments/av_stream/lip_stream/fine_tune_AVSREAM/4_unfreezed/checkpoints/last-v2.ckpt")
+trainer.fit(av_model,train_dataloaders=train_loader,val_dataloaders=val_loader) 

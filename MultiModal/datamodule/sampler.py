@@ -5,6 +5,9 @@ import random
 class BalancedBatchSampler(Sampler):
     """
     Ensures each batch has 50% real and 50% fake samples.
+    It undersamples the majority class to achieve this balance.
+    The number of batches is determined by the smaller class size.
+    Note: Batch size must be even.
     """
     def __init__(self, dataset, batch_size):
         self.dataset = dataset
@@ -34,6 +37,78 @@ class BalancedBatchSampler(Sampler):
             random.shuffle(batch)
             yield batch
 
+
+
+import numpy as np
+
+class OversamplingBalancedBatchSampler(Sampler):
+    """
+    Ensures each batch has a 50-50 class split, with the total number of batches
+    determined by `len(dataset) // batch_size`.
+
+    This sampler uses a hybrid strategy:
+    - It samples the **majority** class **without replacement**.
+    - It samples the **minority** class **with replacement**.
+
+    This is useful when you want to see every majority class sample at most
+    once per epoch, while still forcing a balanced batch composition over a
+    longer epoch defined by the total dataset size.
+    """
+    def __init__(self, dataset, batch_size):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        assert batch_size % 2 == 0, "Batch size must be even for 50-50 sampling"
+
+        # Split indices by class
+        real_indices = [i for i, row in dataset.df.iterrows() if str(row["method"]).lower() == "real"]
+        fake_indices = [i for i, row in dataset.df.iterrows() if str(row["method"]).lower() != "real"]
+
+        # Identify majority and minority classes
+        if len(real_indices) > len(fake_indices):
+            self.majority_indices = real_indices
+            self.minority_indices = fake_indices
+        else:
+            self.majority_indices = fake_indices
+            self.minority_indices = real_indices
+        
+        if not self.minority_indices:
+            raise ValueError("Minority class has no samples.")
+
+        # Calculate the number of batches based on total dataset size
+        self.num_batches = len(self.dataset) // self.batch_size
+        self.half_batch = self.batch_size // 2
+
+        # Check if we have enough majority samples for the entire epoch without replacement
+        required_majority_samples = self.num_batches * self.half_batch
+        if required_majority_samples > len(self.majority_indices):
+            raise ValueError(
+                f"Cannot create {self.num_batches} batches of size {self.batch_size} "
+                f"without replacing majority class samples. Required {required_majority_samples} "
+                f"majority samples, but only {len(self.majority_indices)} are available. "
+                "Consider reducing the batch size or using a different sampling strategy."
+            )
+
+    def __len__(self):
+        return self.num_batches
+
+    def __iter__(self):
+        # Shuffle the majority indices once for the epoch
+        majority_pool = self.majority_indices.copy()
+        random.shuffle(majority_pool)
+
+        for i in range(self.num_batches):
+            # Get the next chunk of majority samples without replacement
+            start_idx = i * self.half_batch
+            end_idx = (i + 1) * self.half_batch
+            majority_batch = majority_pool[start_idx:end_idx]
+
+            # Sample the minority class with replacement to fill the other half
+            minority_batch = random.choices(self.minority_indices, k=self.half_batch)
+
+            # Combine and shuffle for the final batch
+            batch = majority_batch + minority_batch
+            random.shuffle(batch)
+            yield batch
 
 
 # if __name__ == "__main__":

@@ -107,7 +107,8 @@ class VideoTransform:
                 FunctionalModule(lambda x: x / 255.0),
                 torchvision.transforms.RandomCrop(88),
                 torchvision.transforms.Grayscale(),
-                AdaptiveTimeMask(10, 25),
+                torchvision.transforms.RandomHorizontalFlip(p=0.5),
+                AdaptiveTimeMask(5, 25),
                 torchvision.transforms.Normalize(0.421, 0.165),
             )
         elif subset == "val" or subset == "test":
@@ -131,7 +132,7 @@ class AudioTransform:
     """
     def __init__(self, subset, snr_target=None,modality_drop_rate=None):
         if subset == "train":
-            self.time_mask = AdaptiveTimeMask(6400, 16000)
+            self.time_mask = AdaptiveTimeMask(3200, 16000)
             self.dropout = ModalityDropout(p=modality_drop_rate)   # will output (x, flag)
             self.noise = AddNoise()
             self.norm = FunctionalModule(

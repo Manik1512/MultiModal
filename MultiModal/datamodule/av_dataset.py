@@ -7,18 +7,17 @@ and read a single video from dataset and return all video frames and its corresp
 
 import os
 import torch
+import torch.utils.data.dataloader
 import torchvision
 import pandas as pd 
 import numpy as np 
 
-# import sampler    #uncomment this when running independently
+# import sampler   #uncomment this when running independently
 # import transforms  #uncomment this when running independently
 
 import torchaudio
-from . import sampler
 from . import transforms
-
-
+from . import sampler
 def dataset_name():
     pass
 
@@ -186,32 +185,58 @@ class CELEB_AV(torch.utils.data.Dataset):
 
 
 if __name__ == "__main__":
-    from transforms import AudioTransform, VideoTransform
 
+    from torch.utils.data import  WeightedRandomSampler,DataLoader
+    from collections import Counter
     train_dataset = CELEB_AV(
         # root_dir="/home/manik/Downloads/FakeAVCeleb_v1.2",
         unprocessed_dir=None,
-        csv_file="/home/manik/Downloads/FakeAvCelebPreprocessed/labels_split.csv",
-        subset="val",
+        csv_file="/home/manik/Downloads/FakeAvCelebPreprocessed/df_matching_frames.csv",
+        subset="train",
         modality_drop_rate=0.4,
         preprocessed_dir="/home/manik/Downloads/FakeAvCelebPreprocessed",
         num_frames=25,
         debug=False
     )
-    # print(len(train_dataset))
-    # sample = train_dataset[torch.randint(0, len(train_dataset), (1,)).item()]
-    # print(sample["video"].shape, sample["audio"][0].shape, sample["target"])
+
+    # labels = []
+    # for i in range(len(train_dataset.df)):
+    #     method = str(train_dataset.df.iloc[i]["method"]).lower()
+    #     labels.append(0 if method == "real" else 1)
 
 
-    batch_size = 2
-    sampler = sampler.BalancedBatchSampler(train_dataset, batch_size=batch_size)
+    # class_counts = Counter(labels)
+    # print("Class counts:", class_counts)
+    # print("Total samples:", len(train_dataset))
+    # class_weights = {cls: 1.0 / count for cls, count in class_counts.items()}
+    # sample_weights = [class_weights[label] for label in labels]
+    # sampler = WeightedRandomSampler(
+    # weights=sample_weights,
+    # num_samples=len(sample_weights),  # can increase to oversample further
+    # replacement=True
+    # )
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_sampler=sampler)
-    # train_loader = torch.utils.data.DataLoader(train_dataset,batch_size=batch_size,shuffle=True)
+
+
+
+
+
+    batch_size = 8
+    sampler = sampler.OversamplingBalancedBatchSampler(train_dataset, batch_size=batch_size)
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_sampler=sampler,
+        # num_workers=4,
+        pin_memory=True
+    )
+
+    # train_loader = torch.utils.data.DataLoader(train_dataset, batch_sampler=sampler)
+    # # train_loader = torch.utils.data.DataLoader(train_dataset,batch_size=batch_size,shuffle=True)
 
     for batch in train_loader:
         print(batch["target"])  # should always have equal 0s and 1s
-        print(batch['video'].shape)
-        print(batch['audio'].shape)
+        # print(batch['video'].shape)
+        # print(batch['audio'].shape)
         break
 
