@@ -41,8 +41,8 @@ val_dataset = av_dataset.CELEB_AV(
 
 
 SAVE_DIR = cfg.trainer.logg_dir
-version="OversamplingBalancedBatchSampler"
-EXPERIMENT_NAME = "lip_stream/fine_tune_AVSREAM/Start_4_unfreezed_BATCH16"
+version="OversamplingBalancedBatchSampler_accumulate_grad_batches_correctROI_128"
+EXPERIMENT_NAME = "lip_stream/fine_tune_AVSREAM/Start_2_unfreezed_split_by_source"
 logger = TensorBoardLogger(
         save_dir=SAVE_DIR,
         name=EXPERIMENT_NAME,
@@ -77,7 +77,7 @@ val_loader = torch.utils.data.DataLoader(
 steps_per_epoch = len(train_loader)
 print(f"Steps per epoch: {steps_per_epoch}")
 
-av_model=lip_sync_stream.lip_sync_stream(cfg,debug=False,steps_per_epoch=steps_per_epoch,unfreezed_conformers=4)
+av_model=lip_sync_stream.lip_sync_stream(cfg,debug=False,steps_per_epoch=steps_per_epoch,unfreezed_conformers=2)
 
 best_model_callback = ModelCheckpoint(
     dirpath=os.path.join(ckpt_saved_path,'checkpoints/'),
@@ -104,7 +104,9 @@ trainer = pl.Trainer(
         logger=logger,
         precision="16-mixed",
         callbacks=[best_model_callback,latest_model_callback],
+        accumulate_grad_batches=6
     )
 
-# trainer.fit(av_model,train_dataloaders=train_loader,val_dataloaders=val_loader,ckpt_path="/home/manik/Documents/experiments/av_stream/lip_stream/fine_tune_AVSREAM/4_unfreezed/checkpoints/last-v2.ckpt")
+ckpt_path="/home/manik/Documents/experiments/av_stream/lip_stream/fine_tune_AVSREAM/Start_4_unfreezed_split_by_source/OversamplingBalancedBatchSampler/checkpoints/last.ckpt"
+# trainer.fit(av_model,train_dataloaders=train_loader,val_dataloaders=val_loader,ckpt_path=ckpt_path)
 trainer.fit(av_model,train_dataloaders=train_loader,val_dataloaders=val_loader) 

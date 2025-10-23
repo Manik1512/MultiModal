@@ -84,10 +84,21 @@ elif category == 'fvra':
     input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio')
 elif category == 'fvfa':
     input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-FakeAudio')
+
+elif category == 'other':
+    input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','African','men')
+    input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','Asian (East)')
+    input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','Asian (South)')
+    
+    input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','Caucasian (American)')
+    input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','African','women')
+    input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','Caucasian (European)')
+
+
 else:
     exit('Wrong category input')
 
-
+print(input_root)
 to_iterate = list(os.walk(input_root))
 count = 0
 for root, dirs, files in tqdm(to_iterate, total=len(to_iterate)):

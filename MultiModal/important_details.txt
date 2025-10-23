@@ -12,3 +12,12 @@ split::
     - no oversampling in validation and tesing 
 
 
+
+
+
+
+results: 
+    - Start 2 with 128 layer is working best 
+    - ON evaluating test data without audio stream -> giving all predictions as deepfake 
+
+

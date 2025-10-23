@@ -9,16 +9,161 @@ from hydra import initialize, compose
 from torch import nn
 import torch.functional as F
 from einops import rearrange
-import torchmetrics as tm
-from torchmetrics.classification import BinaryAccuracy, BinaryPrecision, BinaryRecall, BinaryF1Score
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import torchmetrics# from torchmetrics.classification import (
-#     BinaryPrecision, BinaryRecall, BinaryF1Score,
-#     BinaryAUROC, BinaryAveragePrecision
-# )
 import seaborn as sns
 import matplotlib.pyplot as plt
 import gc
+
+
+class CrossAttention(nn.Module):
+    """ Cross-Attention module allowing a primary stream to attend to a secondary stream.
+        If no secondary stream is provided, it defaults to self-attention.
+        if attention_pooling is True, it uses a learnable query vector for attention pooling.
+
+        For consistency take , dim_heads=dim//heads, in that case => inner_dim=dim
+    """
+    def __init__(self, dim, heads=8, dim_head=64, dropout=0.0,attention_pooling=False):
+        super().__init__()
+
+        inner_dim = dim_head * heads
+        self.heads = heads
+        self.scale = dim_head ** -0.5  # Manual scaling is not needed for F.scaled_dot_product_attention but good practice to have
+        self.dim_head = dim_head
+        
+        self.dropout_rate = dropout
+        # Keys and Values are projected from the 'context' stream in one go
+        self.attention_pooling=attention_pooling
+        if attention_pooling:
+            self.q=nn.Parameter(torch.randn(1, dim_head*heads)) 
+        else :
+            self.to_q = nn.Linear(dim, inner_dim, bias=False)
+
+        self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout)
+        )
+
+    def forward(self, x, context=None, mask=None):
+        """
+        Args:
+            x (torch.Tensor): The primary stream(query stream).
+                              Shape: (batch, seq_len_q, dim)
+
+            context :        This is the second stream (key/value stream).
+                                            If None, performs self-attention on 'x'.
+                                            Shape: (batch, seq_len_kv, dim)
+            mask (torch.Tensor, optional): Boolean attention mask. Not typically used
+                                           in cross-attention but included for completeness.
+                                           Shape: (batch, seq_len_q, seq_len_kv)
+
+        Returns:
+            torch.Tensor: The output tensor after attention.
+                          Shape: (batch, seq_len_q, dim)
+        """
+        # If no context is provided, default to self-attention
+        # This makes the module more versatile
+        context = context if context is not None else x
+
+        if self.attention_pooling:
+            q = self.q.unsqueeze(0).repeat(x.shape[0], 1, 1)  # (b, 1, inner_dim)  ,inner_dim=heads*dim_head
+            
+
+        else :
+            # (b, n, dim) -> (b, n, h*d) -> (b, h, n, d)
+            q = self.to_q(x)
+            q = rearrange(q, 'b n (h d) -> b h n d', h=self.heads)
+        
+
+        # (b, m, dim) -> (b, m, h*d*2)
+        k, v = self.to_kv(context).chunk(2, dim=-1)
+
+        # (b, m, h*d) -> (b, h, m, d)
+        q = rearrange(q, 'b n (h d) -> b h n d', h=self.heads)
+        k = rearrange(k, 'b n (h d) -> b h n d', h=self.heads)
+        v = rearrange(v, 'b n (h d) -> b h n d', h=self.heads)
+
+        out = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=mask, dropout_p=self.dropout_rate if self.training else 0.0
+        )
+
+        
+        if self.attention_pooling:
+            out = out.squeeze(1)  # (b, dim)
+        # (b, h, n, d) -> (b, n, h*d)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out)
+
+
+
+
+class GatedFusion(nn.Module):
+    """Weighted Addition of two features
+       where weights are learnable parameters
+      and the function of input"""
+    def __init__(self,
+                 dim
+                 ):
+        super().__init__()
+        self.gate_layer=nn.Linear(dim*2,dim)
+        self.sigmoid=nn.Sigmoid()
+
+    def forward(self,x_orig,x_atte):
+        "Input=Output->(B,T,D)"
+        alpha=self.sigmoid(self.gate_layer(torch.cat((x_orig, x_atte), dim=-1)))
+        fused_output = (alpha * x_atte) + ((1 - alpha) * x_orig)
+        return fused_output
+        
+
+
+# class GatedAudioVisualFusion(nn.Module):
+#     def __init__(self,
+#                  dim,
+#                  gatedFusion=False,
+#                  attentionPooling=False,
+#                  heads=8, 
+#                  dim_head=64, 
+#                  dropout=0.0,
+#                  num_frames=25
+#                  ):
+#         super().__init__()
+
+        
+#         self.AudioCrossAttention=CrossAttention(dim,heads,dim_head,dropout) 
+#         self.VideoCrossAttention=CrossAttention(dim,heads,dim_head,dropout)
+
+#         self.attentionPooling=AttentionPooling(dim,max_frames=num_frames,num_heads=heads) if attentionPooling else None
+
+#         self.AudioGatedFusion=GatedFusion(dim) if gatedFusion else None
+#         self.VideoGatedFusion=GatedFusion(dim) if gatedFusion else None
+        
+
+#     def forward(self,audio, video):
+#         audio_stream_cross_attent=self.AudioCrossAttention(audio,video)
+#         video_stream_cross_attent=self.VideoCrossAttention(video, audio)
+
+#         if self.AudioGatedFusion:
+#             fused_audio_features=self.AudioGatedFusion(audio,audio_stream_cross_attent)
+#             fused_video_features=self.VideoGatedFusion(video,video_stream_cross_attent)
+#         else :
+#             fused_audio_features=audio+audio_stream_cross_attent
+#             fused_video_features=video+video_stream_cross_attent
+
+#         x_conc=torch.concat((fused_audio_features,fused_video_features),dim=-1)
+
+#         if self.attentionPooling:
+#             pooled_features=self.attentionPooling(x_conc)
+#         else :
+#             pooled_features=torch.mean(x_conc, dim=1)
+
+#         return pooled_features
+
+            
+
+
+
 
 class Feature_extraction_av(LightningModule):
     def __init__(self, cfg,debug):
@@ -34,163 +179,32 @@ class Feature_extraction_av(LightningModule):
     def forward(self, video, audio):
         # print("in forward of feature extraction , video=>",video)
         video_feat, _ = self.model.encoder(video.unsqueeze(0).to(self.device), None)
-
-        # print("video shape after encoder",video_feat.shape)
-
         audio_feat, _ = self.model.aux_encoder(audio.unsqueeze(0).to(self.device), None)
-
         
         audiovisual_feat = self.model.fusion(torch.cat((video_feat, audio_feat), dim=-1))
 
         if self.debug:
-            print("audio shape after encoder",audio_feat.shape)
+            print("video shape before fusion",video_feat.shape)
+            print("audio shape before fusion",audio_feat.shape)
             print("audiovisual shape after encoder",audiovisual_feat.shape)
 
         return audiovisual_feat
     
     def load_weights(self, ckpt_path):
-        """
-        Load model weights from a checkpoint file.
-        """
         ckpt = torch.load(ckpt_path, map_location="cpu")
         self.model.load_state_dict(ckpt, strict=False)
         print("Model weights loaded successfully")
 
 
 
-# class lip_sync_stream(LightningModule):
-#     def __init__(self, cfg,debug):
-#         super().__init__()
-#         self.save_hyperparameters(cfg)
-#         self.cfg = cfg
-#         self.feature_dim=self.cfg.model.lip_sync_model.feature_dim
-#         self.feature_extractor = Feature_extraction_av(cfg,debug=debug)
-#         self.feature_norm = nn.LayerNorm(self.feature_dim)
-#         self.feature_extractor.load_weights(self.cfg.model.lip_sync_model.avsr_path)
-#         self.classifier = nn.Sequential(
-#             nn.Linear(self.feature_dim, 512),
-#             nn.LayerNorm(512),
-#             nn.GELU(),  
-#             nn.Dropout(self.cfg.model.lip_sync_model.dropout_rate),
-
-#             nn.Linear(512, 128),
-#             nn.LayerNorm(128),
-#             nn.GELU(),  
-#             nn.Dropout(self.cfg.model.lip_sync_model.dropout_rate),
-
-#             nn.Linear(128, 1),
-#         )
-
-#         self.criterion = nn.BCEWithLogitsLoss()
-
-#         metrics = {
-#             "acc": torchmetrics.Accuracy(task="binary"),
-#             "prec": torchmetrics.Precision(task="binary"),
-#             "rec": torchmetrics.Recall(task="binary"),
-#             "f1": torchmetrics.F1Score(task="binary"),
-#         }
-#         self.train_metrics = nn.ModuleDict({k: m.clone() for k, m in metrics.items()})
-#         self.debug=debug
-
-#         """Here you just reuse the original metric objects for validation.
-#             Since you cloned them for training already, no problem of overlap.
-#             train and val should have different metrics objects  """
-#         self.val_metrics = nn.ModuleDict(metrics)
-
-#         self.feature_extractor.model.decoder=torch.nn.Identity()
-#         self.feature_extractor.model.fusion=torch.nn.Identity()
-#         self.feature_extractor.model.ctc=torch.nn.Identity()
-#         self.feature_extractor.model.criterion=torch.nn.Identity()
-
-#         for param in self.feature_extractor.parameters():
-#             param.requires_grad = False
-
-
-#         self.validation_outputs = []
-
-#     def forward(self, video, audio):
-#         video = rearrange(video, 'b t c h w -> b c t h w')
-#         features =self.feature_extractor(video, audio)
-#         features = torch.mean(features, dim=1)
-#         if self.debug:
-#             print("shape after mean ",features.shape)
-#             print("input video shape",video.shape)
-#         features = self.feature_norm(features)
-#         logits=self.classifier(features)
-#         return logits
-
-#     def training_step(self, batch, batch_idx):
-#         loss, preds, y  = self._step(batch, step_type="train")
-#         preds = preds.detach().cpu()
-#         y = y.detach().cpu()
-
-#         for m in self.train_metrics.values():
-#             m.update(preds, y.int())
-
-#         # log batch loss
-#         self.log("train/loss", loss, prog_bar=True, on_step=True, on_epoch=True)
-#         return loss
-
-
-#     @torch.no_grad()
-#     def validation_step(self, batch, batch_idx):
-#         loss, preds, y = self._step(batch, step_type="val")
-
-#         # move preds & labels to CPU before metric updates
-#         preds = preds.detach().cpu()
-#         y = y.detach().cpu()
-
-#         for m in self.val_metrics.values():
-#             m.update(preds, y.int())
-
-#         # log batch loss (optional, but use on_epoch instead of on_step)
-#         self.log("val/loss", loss, prog_bar=True, on_epoch=True, on_step=False)
-
-#         return loss
-    
-#     def _step(self, batch, step_type):
-#         video = batch["video"]
-#         audio = batch["audio"]
-#         y = batch["target"]
-#         logits = self(video, audio).squeeze(1)
-#         loss = self.criterion(logits, y.float())
-#         preds = (torch.sigmoid(logits) > 0.5).int()
-
-#         return loss, preds, y
-    
-#     def on_train_epoch_end(self):
-#         # compute once per epoch
-#         for name, metric in self.train_metrics.items():
-#             val = metric.compute()
-#             self.log(f"train/{name}", val, prog_bar=True)
-#             metric.reset()
-
-#     def on_validation_epoch_end(self):
-#         for name, metric in self.val_metrics.items():
-#             val = metric.compute()
-#             self.log(f"val/{name}", val, prog_bar=True)
-#             metric.reset()
-            
-#     def configure_optimizers(self):
-#         optimizer=torch.optim.AdamW(self.parameters(), lr=self.cfg.trainer.learning_rate,weight_decay=self.cfg.trainer.weight_decay)
-#         scheduler = {
-#         'scheduler': torch.optim.lr_scheduler.ReduceLROnPlateau(
-#             optimizer,
-#             mode='min',
-#             factor=0.5,
-#             patience=3,
-#             verbose=True,
-#             min_lr=1e-6
-#         ),
-#         'monitor': 'val_loss',  # must match the metric you log in validation_step
-#         'interval': 'epoch',    # check metric each epoch
-#         'frequency': 1
-#     }
-#         return {"optimizer": optimizer, "lr_scheduler": scheduler}
-
-
 class lip_sync_stream(LightningModule):
-    def __init__(self, cfg,debug,steps_per_epoch=None,unfreezed_conformers=0):
+    def __init__(self, cfg,
+                 debug,
+                 steps_per_epoch=None,
+                 unfreezed_conformers=4,
+                 gatedAudioVisualFusion=False
+
+                 ):
         super().__init__()
         self.save_hyperparameters(cfg)
         self.cfg = cfg
@@ -198,26 +212,20 @@ class lip_sync_stream(LightningModule):
         self.feature_extractor = Feature_extraction_av(cfg,debug=debug)
         self.feature_norm = nn.LayerNorm(self.feature_dim)
         self.feature_extractor.load_weights(self.cfg.model.lip_sync_model.avsr_path)
+        print(f"shape of extracted features from FeatExtr=>{self.feature_dim}" if debug else "")
         self.classifier = nn.Sequential(
-            nn.Linear(self.feature_dim, 512),
-            nn.LayerNorm(512),
-            nn.ReLU(),  
+            nn.Linear(self.feature_dim, 128),
+            nn.LayerNorm(128),
+            nn.GELU(),  
             nn.Dropout(self.cfg.model.lip_sync_model.dropout_rate),
-            nn.Linear(512, 1),
+            nn.Linear(128, 1),
         )
 
         self.train_auc = torchmetrics.AUROC(task="binary")
         self.val_auc = torchmetrics.AUROC(task="binary")
+        self.test_auc = torchmetrics.AUROC(task="binary")   
+        # self.val_auc = torchmetrics.AUROC(task="binary")
         self.criterion = nn.BCEWithLogitsLoss()
-
-        # self.accuracy = tm.Accuracy(task="binary", threshold=0.5, average=None)
-        # self.f1_score = tm.F1Score(task="binary", threshold=0.5 , average=None)
-        # self.precision = tm.Precision(task="binary", threshold=0.5 , average=None)
-        # self.recall = tm.Recall(task="binary", threshold=0.5 , average=None)
-
-
-
-        # self.train_metrics = nn.ModuleDict({k: m.clone() for k, m in metrics.items()})
         self.debug=debug
 
         """Here you just reuse the original metric objects for validation.
@@ -234,23 +242,7 @@ class lip_sync_stream(LightningModule):
             param.requires_grad = False
 
 
-        count_till=12-unfreezed_conformers
         count=0
-        # for layer in self.feature_extractor.model.aux_encoder.encoders:             # yeh last ke unfreeze kerta hai 
-
-        #     if count >=count_till:
-        #         for param in layer.parameters():
-        #             param.requires_grad = True
-        #     count=count+1
-        # count=0
-
-        # for layer in self.feature_extractor.model.encoder.encoders:
-
-        #     if count >=count_till:
-        #         for param in layer.parameters():
-        #             param.requires_grad = True
-        #     count=count+1
-
 
         for layer in self.feature_extractor.model.aux_encoder.encoders:             
 
@@ -271,14 +263,9 @@ class lip_sync_stream(LightningModule):
 
             else:
                 layer=nn.Identity()
-            
             count=count+1
 
-
-
-        # self.validation_outputs = []
         self.steps_per_epoch=steps_per_epoch
-
 
         self.val_tp = 0
         self.val_fp = 0
@@ -289,19 +276,22 @@ class lip_sync_stream(LightningModule):
         self.train_fp = 0
         self.train_fn = 0
         self.train_tn = 0
+
+        self.test_tp = 0
+        self.test_fp = 0
+        self.test_fn = 0
+        self.test_tn = 0
             
     def forward(self, video, audio):
         video = rearrange(video, 'b t c h w -> b c t h w')
         features =self.feature_extractor(video, audio)
-        features = torch.mean(features, dim=1)
+        features = torch.mean(features, dim=1)   #MEAN over time dimesnion (B, T, D) -> (B, D)
         if self.debug:
             print("shape after mean ",features.shape)
-            print("input video shape",video.shape)
         features = self.feature_norm(features)
         logits=self.classifier(features)
         return logits
-
-
+    
     def training_step(self, batch, batch_idx):
         loss, logits, y = self._step(batch, step_type="train")
         # probs = torch.sigmoid(logits).detach().cpu()
@@ -357,8 +347,7 @@ class lip_sync_stream(LightningModule):
 
         self.log("val_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
         return None
-
-      
+    
     def on_train_epoch_end(self):
         precision = self.train_tp / (self.train_tp + self.train_fp + 1e-8)
         recall = self.train_tp / (self.train_tp + self.train_fn + 1e-8)
@@ -413,7 +402,7 @@ class lip_sync_stream(LightningModule):
         gc.collect()
         torch.cuda.empty_cache()
 
-
+    
 
     def _step(self, batch, step_type):
         video = batch["video"]
@@ -450,6 +439,7 @@ class lip_sync_stream(LightningModule):
             "optimizer": optimizer,
             "lr_scheduler": {"scheduler": scheduler, "monitor": "val_loss", "interval": "epoch", "frequency": 1}
         }
+    
     def plot_confusion_matrix_from_values(self,tp, fp, tn, fn, class_names=["Negative", "Positive"]):
         cm = [[tn, fp],
             [fn, tp]]
@@ -461,6 +451,70 @@ class lip_sync_stream(LightningModule):
         ax.set_ylabel("True")
         plt.tight_layout()
         return fig
+    
+    def test_step(self, batch, batch_idx):
+        # The '_step' call might be for 'test' or 'val', depending on your implementation.
+        # We'll assume it's generic enough to be used for both.
+        loss, logits, y = self._step(batch, step_type="test")
+
+        # Detach all tensors to prevent memory leaks during inference
+        loss = loss.detach()
+        logits = logits.detach()
+        y = y.detach()
+
+        probs = torch.sigmoid(logits)
+        preds = (probs > 0.5).int()
+
+        # Manually calculate confusion matrix components
+        tp = ((preds == 1) & (y == 1)).sum().item()
+        fp = ((preds == 1) & (y == 0)).sum().item()
+        fn = ((preds == 0) & (y == 1)).sum().item()
+        tn = ((preds == 0) & (y == 0)).sum().item()
+
+        # Update metrics
+        self.test_auc.update(probs, y)
+        
+
+        self.test_tp += tp
+        self.test_fp += fp
+        self.test_fn += fn
+        self.test_tn += tn
+
+        return None
+
+    
+    def on_test_epoch_end(self):
+        # Calculate final AUC
+        final_auc = self.test_auc.compute()
+
+        # Avoid division by zero
+        epsilon = 1e-6
+
+        # Calculate metrics from the accumulated confusion matrix components
+        accuracy = (self.test_tp + self.test_tn) / (self.test_tp + self.test_tn + self.test_fp + self.test_fn + epsilon)
+        precision = self.test_tp / (self.test_tp + self.test_fp + epsilon)
+        recall = self.test_tp / (self.test_tp + self.test_fn + epsilon)
+        f1_score = 2 * (precision * recall) / (precision + recall + epsilon)
+      
+        print("\n" + "="*50)
+        print("Test Metrics Summary")
+        print("="*50)
+        print(f"Total True Positives (TP):  {self.test_tp}")
+        print(f"Total False Positives (FP): {self.test_fp}")
+        print(f"Total True Negatives (TN):  {self.test_tn}")
+        print(f"Total False Negatives (FN): {self.test_fn}")
+        print("-" * 50)
+        print(f"Accuracy:  {accuracy:.4f}")
+        print(f"Precision: {precision:.4f}")
+        print(f"Recall:    {recall:.4f}")
+        print(f"F1 Score:  {f1_score:.4f}")
+        print(f"AUC:       {final_auc:.4f}")
+        print("="*50 + "\n")
+
+        # It's good practice to reset the metric after computing
+        self.test_auc.reset()
+
+
 
 
 if __name__ == "__main__":
@@ -481,8 +535,11 @@ if __name__ == "__main__":
 
     # summary(model, input_size=[video.shape,audio.shape])
 
-    print(model.feature_extractor.model.aux_encoder.encoders[0])
-    len=0
-    for encoder_layer in model.feature_extractor.model.aux_encoder.encoders:
-        len=len+1
-    print("len of audio encoder layers",len)    
+    # print(model.feature_extractor.model.aux_encoder.encoders[0])
+
+    print("fusion ",model.feature_extractor.model.fusion)
+
+    # len=0
+    # for encoder_layer in model.feature_extractor.model.aux_encoder.encoders:
+    #     len=len+1
+    # print("len of audio encoder layers",len)    

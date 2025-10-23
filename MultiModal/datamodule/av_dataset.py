@@ -21,9 +21,9 @@ from . import sampler
 def dataset_name():
     pass
 
-def load_video(path, processed_dir=None,debug=True):
+def load_video(path, processed_dir=None,debug=True,audio_path=None):
     audio,vid=None,None
-    audio_path = os.path.splitext(path)[0] + ".wav"
+    # audio_path = os.path.splitext(path)[0] + ".wav"
     try:
         vid, _, _ = torchvision.io.read_video(path, pts_unit="sec", output_format="THWC")
         vid = vid.permute((0, 3, 1, 2))
@@ -81,11 +81,11 @@ class CELEB_AV(torch.utils.data.Dataset):
         self.video_transform=transforms.VideoTransform(self.subset)
 
         if self.subset == "train":
-            self.df= df[df["split"] == "train"].reset_index(drop=True)
+            self.df= df[df["split_by_source"] == "train"].reset_index(drop=True)
         elif self.subset == "val":
-            self.df= df[df["split"] == "val"].reset_index(drop=True)
+            self.df= df[df["split_by_source"] == "val"].reset_index(drop=True)
         elif self.subset == "test":
-            self.df= df[df["split"] == "test"].reset_index(drop=True)
+            self.df= df[df["split_by_source"] == "test"].reset_index(drop=True)
         else:   
             raise ValueError("subset must be one of 'train', 'val', or 'test'")
 
@@ -101,7 +101,7 @@ class CELEB_AV(torch.utils.data.Dataset):
         if total_frames >= self.num_frames:
             if self.subset=="train":
                 frame_start = np.random.randint(0, total_frames - self.num_frames + 1)  
-            elif self.subset=="val":
+            elif self.subset=="val" or self.subset=="test":
                 frame_start=0
 
             frame_end = frame_start + self.num_frames
@@ -147,10 +147,13 @@ class CELEB_AV(torch.utils.data.Dataset):
 
         if self.processed_dir:
             video_path = os.path.join(self.processed_dir,type,race,gender,id,video_path)
+            audio_path = os.path.splitext(video_path)[0] + ".wav"
+            base, ext = os.path.splitext(video_path)
+            video_path = f"{base}_roi{ext}"
 
         if self.debug:
             print(video_path)
-        video,audio = load_video(video_path,self.processed_dir,self.debug)
+        video,audio = load_video(video_path,self.processed_dir,self.debug,audio_path)
 
         video, audio = self.sample_frames(video, audio)
 

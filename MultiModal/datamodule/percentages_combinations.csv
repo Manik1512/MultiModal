@@ -1,0 +1,241 @@
+split,method,type,race,gender,percentage
+train,real,RealVideo-RealAudio,African,men,0.23220327738340077
+train,real,RealVideo-RealAudio,African,women,0.23220327738340077
+train,real,RealVideo-RealAudio,Caucasian (American),men,0.2587407947986466
+train,real,RealVideo-RealAudio,Caucasian (American),women,0.23883765673721222
+train,real,RealVideo-RealAudio,Asian (East),men,0.22556889802958932
+train,real,RealVideo-RealAudio,Asian (East),women,0.205665759968155
+train,real,RealVideo-RealAudio,Caucasian (European),men,0.2123001393219664
+train,real,RealVideo-RealAudio,Caucasian (European),women,0.2720095535062695
+train,real,RealVideo-RealAudio,Asian (South),men,0.21893451867577787
+train,real,RealVideo-RealAudio,Asian (South),women,0.22556889802958932
+train,rtvc,RealVideo-FakeAudio,African,men,0.23220327738340077
+train,rtvc,RealVideo-FakeAudio,African,women,0.23220327738340077
+train,rtvc,RealVideo-FakeAudio,Caucasian (American),men,0.2587407947986466
+train,rtvc,RealVideo-FakeAudio,Caucasian (American),women,0.23883765673721222
+train,rtvc,RealVideo-FakeAudio,Asian (East),men,0.22556889802958932
+train,rtvc,RealVideo-FakeAudio,Asian (East),women,0.205665759968155
+train,rtvc,RealVideo-FakeAudio,Caucasian (European),men,0.2123001393219664
+train,rtvc,RealVideo-FakeAudio,Caucasian (European),women,0.2720095535062695
+train,rtvc,RealVideo-FakeAudio,Asian (South),men,0.21893451867577787
+train,rtvc,RealVideo-FakeAudio,Asian (South),women,0.22556889802958932
+train,faceswap,FakeVideo-RealAudio,African,men,0.41796589929012135
+train,faceswap,FakeVideo-RealAudio,African,women,0.25210641544483514
+train,faceswap,FakeVideo-RealAudio,Caucasian (American),men,0.43786903735155575
+train,faceswap,FakeVideo-RealAudio,Caucasian (American),women,0.3317189676905725
+train,faceswap,FakeVideo-RealAudio,Asian (East),men,0.3516221057520069
+train,faceswap,FakeVideo-RealAudio,Asian (East),women,0.14595634578385192
+train,faceswap,FakeVideo-RealAudio,Caucasian (European),men,0.37152524381344126
+train,faceswap,FakeVideo-RealAudio,Caucasian (European),women,0.32508458833676107
+train,faceswap,FakeVideo-RealAudio,Asian (South),men,0.37152524381344126
+train,faceswap,FakeVideo-RealAudio,Asian (South),women,0.37152524381344126
+train,faceswap-wav2lip,FakeVideo-FakeAudio,African,men,1.2870695946394215
+train,faceswap-wav2lip,FakeVideo-FakeAudio,African,women,1.015060041133152
+train,faceswap-wav2lip,FakeVideo-FakeAudio,Caucasian (American),men,1.64532607974524
+train,faceswap-wav2lip,FakeVideo-FakeAudio,Caucasian (American),women,1.2538976978703642
+train,faceswap-wav2lip,FakeVideo-FakeAudio,Asian (East),men,1.3335102501161016
+train,faceswap-wav2lip,FakeVideo-FakeAudio,Asian (East),women,0.7629536256883168
+train,faceswap-wav2lip,FakeVideo-FakeAudio,Caucasian (European),men,1.4661978371923308
+train,faceswap-wav2lip,FakeVideo-FakeAudio,Caucasian (European),women,1.1742851456246268
+train,faceswap-wav2lip,FakeVideo-FakeAudio,Asian (South),men,1.3202414914084788
+train,faceswap-wav2lip,FakeVideo-FakeAudio,Asian (South),women,1.340144629469913
+train,fsgan,FakeVideo-RealAudio,African,men,1.837723081005772
+train,fsgan,FakeVideo-RealAudio,African,women,1.3534133881775359
+train,fsgan,FakeVideo-RealAudio,Caucasian (American),men,2.282226497711139
+train,fsgan,FakeVideo-RealAudio,Caucasian (American),women,2.355204670603065
+train,fsgan,FakeVideo-RealAudio,Asian (East),men,0.8492005572878656
+train,fsgan,FakeVideo-RealAudio,Asian (East),women,1.6386917003914283
+train,fsgan,FakeVideo-RealAudio,Caucasian (European),men,2.341935911895442
+train,fsgan,FakeVideo-RealAudio,Caucasian (European),women,2.0433888409739267
+train,fsgan,FakeVideo-RealAudio,Asian (South),men,1.7912824255290918
+train,fsgan,FakeVideo-RealAudio,Asian (South),women,1.797916804882903
+train,fsgan-wav2lip,FakeVideo-FakeAudio,African,men,1.64532607974524
+train,fsgan-wav2lip,FakeVideo-FakeAudio,African,women,1.2140914217474956
+train,fsgan-wav2lip,FakeVideo-FakeAudio,Caucasian (American),men,2.1959795661115904
+train,fsgan-wav2lip,FakeVideo-FakeAudio,Caucasian (American),women,2.0964638758044183
+train,fsgan-wav2lip,FakeVideo-FakeAudio,Asian (East),men,0.7165129702116367
+train,fsgan-wav2lip,FakeVideo-FakeAudio,Asian (East),women,1.1079413520865122
+train,fsgan-wav2lip,FakeVideo-FakeAudio,Caucasian (European),men,2.189345186757779
+train,fsgan-wav2lip,FakeVideo-FakeAudio,Caucasian (European),women,2.016851323558681
+train,fsgan-wav2lip,FakeVideo-FakeAudio,Asian (South),men,1.6254229416838055
+train,fsgan-wav2lip,FakeVideo-FakeAudio,Asian (South),women,1.69176673522192
+train,wav2lip,FakeVideo-RealAudio,African,men,2.540967292509786
+train,wav2lip,FakeVideo-RealAudio,African,women,2.2424202215882705
+train,wav2lip,FakeVideo-RealAudio,Caucasian (American),men,2.3883765673721222
+train,wav2lip,FakeVideo-RealAudio,Caucasian (American),women,2.2755921183573276
+train,wav2lip,FakeVideo-RealAudio,Asian (East),men,2.295495256418762
+train,wav2lip,FakeVideo-RealAudio,Asian (East),women,2.3021296357725736
+train,wav2lip,FakeVideo-RealAudio,Caucasian (European),men,2.355204670603065
+train,wav2lip,FakeVideo-RealAudio,Caucasian (European),women,2.322032773834008
+train,wav2lip,FakeVideo-RealAudio,Asian (South),men,2.3087640151263846
+train,wav2lip,FakeVideo-RealAudio,Asian (South),women,2.4348172228488023
+train,wav2lip,FakeVideo-FakeAudio,African,men,2.295495256418762
+train,wav2lip,FakeVideo-FakeAudio,African,women,2.14953891063491
+train,wav2lip,FakeVideo-FakeAudio,Caucasian (American),men,2.2888608770649506
+train,wav2lip,FakeVideo-FakeAudio,Caucasian (American),women,2.1230013932196643
+train,wav2lip,FakeVideo-FakeAudio,Asian (East),men,1.9173356332515095
+train,wav2lip,FakeVideo-FakeAudio,Asian (East),women,1.6718635971604854
+train,wav2lip,FakeVideo-FakeAudio,Caucasian (European),men,2.2689577390035165
+train,wav2lip,FakeVideo-FakeAudio,Caucasian (European),women,2.030120082266304
+train,wav2lip,FakeVideo-FakeAudio,Asian (South),men,2.1694420486963444
+train,wav2lip,FakeVideo-FakeAudio,Asian (South),women,2.2092483248192134
+test,real,RealVideo-RealAudio,African,men,0.18570102135561745
+test,real,RealVideo-RealAudio,African,women,0.3714020427112349
+test,real,RealVideo-RealAudio,Caucasian (American),men,0.2166511915815537
+test,real,RealVideo-RealAudio,Caucasian (American),women,0.1547508511296812
+test,real,RealVideo-RealAudio,Asian (East),men,0.2785515320334262
+test,real,RealVideo-RealAudio,Asian (East),women,0.24760136180748993
+test,real,RealVideo-RealAudio,Caucasian (European),men,0.2166511915815537
+test,real,RealVideo-RealAudio,Caucasian (European),women,0.12380068090374496
+test,real,RealVideo-RealAudio,Asian (South),men,0.2785515320334262
+test,real,RealVideo-RealAudio,Asian (South),women,0.2166511915815537
+test,rtvc,RealVideo-FakeAudio,African,men,0.18570102135561745
+test,rtvc,RealVideo-FakeAudio,African,women,0.3714020427112349
+test,rtvc,RealVideo-FakeAudio,Caucasian (American),men,0.2166511915815537
+test,rtvc,RealVideo-FakeAudio,Caucasian (American),women,0.1547508511296812
+test,rtvc,RealVideo-FakeAudio,Asian (East),men,0.2785515320334262
+test,rtvc,RealVideo-FakeAudio,Asian (East),women,0.24760136180748993
+test,rtvc,RealVideo-FakeAudio,Caucasian (European),men,0.2166511915815537
+test,rtvc,RealVideo-FakeAudio,Caucasian (European),women,0.12380068090374496
+test,rtvc,RealVideo-FakeAudio,Asian (South),men,0.2785515320334262
+test,rtvc,RealVideo-FakeAudio,Asian (South),women,0.2166511915815537
+test,faceswap,FakeVideo-RealAudio,African,men,0.24760136180748993
+test,faceswap,FakeVideo-RealAudio,African,women,0.3095017022593624
+test,faceswap,FakeVideo-RealAudio,Caucasian (American),men,0.3714020427112349
+test,faceswap,FakeVideo-RealAudio,Caucasian (American),women,0.4333023831631074
+test,faceswap,FakeVideo-RealAudio,Asian (East),men,0.2166511915815537
+test,faceswap,FakeVideo-RealAudio,Asian (East),women,0.2785515320334262
+test,faceswap,FakeVideo-RealAudio,Caucasian (European),men,0.4642525533890436
+test,faceswap,FakeVideo-RealAudio,Caucasian (European),women,0.3714020427112349
+test,faceswap,FakeVideo-RealAudio,Asian (South),men,0.3404518724852987
+test,faceswap,FakeVideo-RealAudio,Asian (South),women,0.3404518724852987
+test,faceswap-wav2lip,FakeVideo-FakeAudio,African,men,1.6094088517486844
+test,faceswap-wav2lip,FakeVideo-FakeAudio,African,women,0.773754255648406
+test,faceswap-wav2lip,FakeVideo-FakeAudio,Caucasian (American),men,1.7641597028783658
+test,faceswap-wav2lip,FakeVideo-FakeAudio,Caucasian (American),women,1.268956979263386
+test,faceswap-wav2lip,FakeVideo-FakeAudio,Asian (East),men,1.2380068090374496
+test,faceswap-wav2lip,FakeVideo-FakeAudio,Asian (East),women,0.897554936552151
+test,faceswap-wav2lip,FakeVideo-FakeAudio,Caucasian (European),men,1.6094088517486844
+test,faceswap-wav2lip,FakeVideo-FakeAudio,Caucasian (European),women,0.897554936552151
+test,faceswap-wav2lip,FakeVideo-FakeAudio,Asian (South),men,1.1451562983596408
+test,faceswap-wav2lip,FakeVideo-FakeAudio,Asian (South),women,1.423707830393067
+test,fsgan,FakeVideo-RealAudio,African,men,1.8570102135561743
+test,fsgan,FakeVideo-RealAudio,African,women,1.176106468585577
+test,fsgan,FakeVideo-RealAudio,Caucasian (American),men,2.692664809656453
+test,fsgan,FakeVideo-RealAudio,Caucasian (American),women,2.352212937171154
+test,fsgan,FakeVideo-RealAudio,Asian (East),men,0.9904054472299597
+test,fsgan,FakeVideo-RealAudio,Asian (East),women,1.6094088517486844
+test,fsgan,FakeVideo-RealAudio,Caucasian (European),men,1.8570102135561743
+test,fsgan,FakeVideo-RealAudio,Caucasian (European),women,2.692664809656453
+test,fsgan,FakeVideo-RealAudio,Asian (South),men,1.7022593624264934
+test,fsgan,FakeVideo-RealAudio,Asian (South),women,1.423707830393067
+test,fsgan-wav2lip,FakeVideo-FakeAudio,African,men,1.7641597028783658
+test,fsgan-wav2lip,FakeVideo-FakeAudio,African,women,1.0523057876818322
+test,fsgan-wav2lip,FakeVideo-FakeAudio,Caucasian (American),men,2.4760136180748993
+test,fsgan-wav2lip,FakeVideo-FakeAudio,Caucasian (American),women,2.1974620860414733
+test,fsgan-wav2lip,FakeVideo-FakeAudio,Asian (East),men,0.8047044258743422
+test,fsgan-wav2lip,FakeVideo-FakeAudio,Asian (East),women,1.268956979263386
+test,fsgan-wav2lip,FakeVideo-FakeAudio,Caucasian (European),men,2.259362426493346
+test,fsgan-wav2lip,FakeVideo-FakeAudio,Caucasian (European),women,1.5165583410708758
+test,fsgan-wav2lip,FakeVideo-FakeAudio,Asian (South),men,1.4856081708449396
+test,fsgan-wav2lip,FakeVideo-FakeAudio,Asian (South),women,1.6713091922005572
+test,wav2lip,FakeVideo-RealAudio,African,men,1.9808108944599194
+test,wav2lip,FakeVideo-RealAudio,African,women,2.9402661714639433
+test,wav2lip,FakeVideo-RealAudio,Caucasian (American),men,2.352212937171154
+test,wav2lip,FakeVideo-RealAudio,Caucasian (American),women,2.661714639430517
+test,wav2lip,FakeVideo-RealAudio,Asian (East),men,1.9808108944599194
+test,wav2lip,FakeVideo-RealAudio,Asian (East),women,2.321262766945218
+test,wav2lip,FakeVideo-RealAudio,Caucasian (European),men,1.9808108944599194
+test,wav2lip,FakeVideo-RealAudio,Caucasian (European),women,2.2284122562674096
+test,wav2lip,FakeVideo-RealAudio,Asian (South),men,2.445063447848963
+test,wav2lip,FakeVideo-RealAudio,Asian (South),women,2.352212937171154
+test,wav2lip,FakeVideo-FakeAudio,African,men,2.4760136180748993
+test,wav2lip,FakeVideo-FakeAudio,African,women,1.795109873104302
+test,wav2lip,FakeVideo-FakeAudio,Caucasian (American),men,2.1974620860414733
+test,wav2lip,FakeVideo-FakeAudio,Caucasian (American),women,2.042711234911792
+test,wav2lip,FakeVideo-FakeAudio,Asian (East),men,2.0736614051377282
+test,wav2lip,FakeVideo-FakeAudio,Asian (East),women,1.7022593624264934
+test,wav2lip,FakeVideo-FakeAudio,Caucasian (European),men,2.4760136180748993
+test,wav2lip,FakeVideo-FakeAudio,Caucasian (European),women,2.1974620860414733
+test,wav2lip,FakeVideo-FakeAudio,Asian (South),men,2.445063447848963
+test,wav2lip,FakeVideo-FakeAudio,Asian (South),women,1.918910554008047
+val,real,RealVideo-RealAudio,African,men,0.27829313543599254
+val,real,RealVideo-RealAudio,African,women,0.0927643784786642
+val,real,RealVideo-RealAudio,Caucasian (American),men,0.12368583797155226
+val,real,RealVideo-RealAudio,Caucasian (American),women,0.27829313543599254
+val,real,RealVideo-RealAudio,Asian (East),men,0.1855287569573284
+val,real,RealVideo-RealAudio,Asian (East),women,0.3401360544217687
+val,real,RealVideo-RealAudio,Caucasian (European),men,0.3401360544217687
+val,real,RealVideo-RealAudio,Caucasian (European),women,0.15460729746444032
+val,real,RealVideo-RealAudio,Asian (South),men,0.24737167594310452
+val,real,RealVideo-RealAudio,Asian (South),women,0.27829313543599254
+val,rtvc,RealVideo-FakeAudio,African,men,0.27829313543599254
+val,rtvc,RealVideo-FakeAudio,African,women,0.0927643784786642
+val,rtvc,RealVideo-FakeAudio,Caucasian (American),men,0.12368583797155226
+val,rtvc,RealVideo-FakeAudio,Caucasian (American),women,0.27829313543599254
+val,rtvc,RealVideo-FakeAudio,Asian (East),men,0.1855287569573284
+val,rtvc,RealVideo-FakeAudio,Asian (East),women,0.3401360544217687
+val,rtvc,RealVideo-FakeAudio,Caucasian (European),men,0.3401360544217687
+val,rtvc,RealVideo-FakeAudio,Caucasian (European),women,0.15460729746444032
+val,rtvc,RealVideo-FakeAudio,Asian (South),men,0.24737167594310452
+val,rtvc,RealVideo-FakeAudio,Asian (South),women,0.27829313543599254
+val,faceswap,FakeVideo-RealAudio,African,men,0.30921459492888065
+val,faceswap,FakeVideo-RealAudio,African,women,0.1855287569573284
+val,faceswap,FakeVideo-RealAudio,Caucasian (American),men,0.49474335188620905
+val,faceswap,FakeVideo-RealAudio,Caucasian (American),women,0.27829313543599254
+val,faceswap,FakeVideo-RealAudio,Asian (East),men,0.1855287569573284
+val,faceswap,FakeVideo-RealAudio,Asian (East),women,0.24737167594310452
+val,faceswap,FakeVideo-RealAudio,Caucasian (European),men,0.3710575139146568
+val,faceswap,FakeVideo-RealAudio,Caucasian (European),women,0.525664811379097
+val,faceswap,FakeVideo-RealAudio,Asian (South),men,0.3401360544217687
+val,faceswap,FakeVideo-RealAudio,Asian (South),women,0.4329004329004329
+val,faceswap-wav2lip,FakeVideo-FakeAudio,African,men,1.1440940012368583
+val,faceswap-wav2lip,FakeVideo-FakeAudio,African,women,0.8967223252937538
+val,faceswap-wav2lip,FakeVideo-FakeAudio,Caucasian (American),men,2.0098948670377244
+val,faceswap-wav2lip,FakeVideo-FakeAudio,Caucasian (American),women,0.927643784786642
+val,faceswap-wav2lip,FakeVideo-FakeAudio,Asian (East),men,1.453308596165739
+val,faceswap-wav2lip,FakeVideo-FakeAudio,Asian (East),women,0.8348794063079777
+val,faceswap-wav2lip,FakeVideo-FakeAudio,Caucasian (European),men,1.1440940012368583
+val,faceswap-wav2lip,FakeVideo-FakeAudio,Caucasian (European),women,1.051329622758194
+val,faceswap-wav2lip,FakeVideo-FakeAudio,Asian (South),men,1.6697588126159555
+val,faceswap-wav2lip,FakeVideo-FakeAudio,Asian (South),women,1.4842300556586272
+val,fsgan,FakeVideo-RealAudio,African,men,1.5769944341372915
+val,fsgan,FakeVideo-RealAudio,African,women,1.7316017316017316
+val,fsgan,FakeVideo-RealAudio,Caucasian (American),men,2.0098948670377244
+val,fsgan,FakeVideo-RealAudio,Caucasian (American),women,2.0098948670377244
+val,fsgan,FakeVideo-RealAudio,Asian (East),men,0.7421150278293136
+val,fsgan,FakeVideo-RealAudio,Asian (East),women,1.7316017316017316
+val,fsgan,FakeVideo-RealAudio,Caucasian (European),men,1.7006802721088436
+val,fsgan,FakeVideo-RealAudio,Caucasian (European),women,2.5974025974025974
+val,fsgan,FakeVideo-RealAudio,Asian (South),men,2.1335807050092765
+val,fsgan,FakeVideo-RealAudio,Asian (South),women,2.102659245516388
+val,fsgan-wav2lip,FakeVideo-FakeAudio,African,men,1.391465677179963
+val,fsgan-wav2lip,FakeVideo-FakeAudio,African,women,1.2987012987012987
+val,fsgan-wav2lip,FakeVideo-FakeAudio,Caucasian (American),men,2.1335807050092765
+val,fsgan-wav2lip,FakeVideo-FakeAudio,Caucasian (American),women,2.0717377860235002
+val,fsgan-wav2lip,FakeVideo-FakeAudio,Asian (East),men,0.8039579468150896
+val,fsgan-wav2lip,FakeVideo-FakeAudio,Asian (East),women,0.7730364873222016
+val,fsgan-wav2lip,FakeVideo-FakeAudio,Caucasian (European),men,1.9789734075448362
+val,fsgan-wav2lip,FakeVideo-FakeAudio,Caucasian (European),women,2.102659245516388
+val,fsgan-wav2lip,FakeVideo-FakeAudio,Asian (South),men,2.102659245516388
+val,fsgan-wav2lip,FakeVideo-FakeAudio,Asian (South),women,1.8243661100803956
+val,wav2lip,FakeVideo-RealAudio,African,men,2.6283240568954853
+val,wav2lip,FakeVideo-RealAudio,African,women,2.0408163265306123
+val,wav2lip,FakeVideo-RealAudio,Caucasian (American),men,1.9789734075448362
+val,wav2lip,FakeVideo-RealAudio,Caucasian (American),women,2.195423623995053
+val,wav2lip,FakeVideo-RealAudio,Asian (East),men,2.473716759431045
+val,wav2lip,FakeVideo-RealAudio,Asian (East),women,2.411873840445269
+val,wav2lip,FakeVideo-RealAudio,Caucasian (European),men,2.3191094619666046
+val,wav2lip,FakeVideo-RealAudio,Caucasian (European),women,2.411873840445269
+val,wav2lip,FakeVideo-RealAudio,Asian (South),men,2.2572665429808287
+val,wav2lip,FakeVideo-RealAudio,Asian (South),women,1.7625231910946195
+val,wav2lip,FakeVideo-FakeAudio,African,men,2.0408163265306123
+val,wav2lip,FakeVideo-FakeAudio,African,women,2.1645021645021645
+val,wav2lip,FakeVideo-FakeAudio,Caucasian (American),men,2.3191094619666046
+val,wav2lip,FakeVideo-FakeAudio,Caucasian (American),women,1.9789734075448362
+val,wav2lip,FakeVideo-FakeAudio,Asian (East),men,2.473716759431045
+val,wav2lip,FakeVideo-FakeAudio,Asian (East),women,2.0408163265306123
+val,wav2lip,FakeVideo-FakeAudio,Caucasian (European),men,2.411873840445269
+val,wav2lip,FakeVideo-FakeAudio,Caucasian (European),women,2.1335807050092765
+val,wav2lip,FakeVideo-FakeAudio,Asian (South),men,2.0408163265306123
+val,wav2lip,FakeVideo-FakeAudio,Asian (South),women,2.473716759431045

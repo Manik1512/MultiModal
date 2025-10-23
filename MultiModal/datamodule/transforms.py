@@ -138,12 +138,20 @@ class AudioTransform:
             self.norm = FunctionalModule(
                 lambda x: torch.nn.functional.layer_norm(x, x.shape, eps=1e-8)
             )
-        elif subset in ["val", "test"]:
+        elif subset == "val":
             self.noise = AddNoise(snr_target=snr_target) if snr_target is not None else None
+            # self.dropout = ModalityDropout(p=modality_drop_rate)
             self.norm = FunctionalModule(
                 lambda x: torch.nn.functional.layer_norm(x, x.shape, eps=1e-8)
             )
             self.dropout = None
+            self.time_mask = None
+        elif subset =='test':
+            self.noise = AddNoise(snr_target=snr_target) if snr_target is not None else None
+            self.dropout = ModalityDropout(p=modality_drop_rate)
+            self.norm = FunctionalModule(
+                lambda x: torch.nn.functional.layer_norm(x, x.shape, eps=1e-8)
+            )
             self.time_mask = None
 
     def __call__(self, sample):

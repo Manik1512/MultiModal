@@ -1,10 +1,10 @@
 precision: 32
-batch_size: 16
+batch_size: 32
 learning_rate: 1e-4
 weight_decay: 1e-2
 max_epochs: 25
 modality_drop_rate: 0
-num_workers: 8
+num_workers: 4
 num_nodes: 1
 gpus: -1
 sync_batchnorm: True
@@ -14,7 +14,7 @@ accumulate_grad_batches: 1
 gradient_clip_val: 5.0
 replace_sampler_ddp: False
 resume_from_checkpoint:
-preprocessed_dir: "/home/manik/Downloads/FakeAvCelebPreprocessed"
-csv_file: "/home/manik/Downloads/FakeAvCelebPreprocessed/df_matching_frames.csv"
+preprocessed_dir: "/home/manik/Downloads/FakeAVCeleb_v1.2"
+csv_file: "/home/manik/Downloads/FakeAVCeleb_v1.2/split_by_source.csv"
 num_frames: 25
 logg_dir: "/home/manik/Documents/experiments/av_stream"

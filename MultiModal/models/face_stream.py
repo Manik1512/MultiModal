@@ -211,6 +211,9 @@ class Attention(nn.Module):  #it performs multi head self attention
 
 
 class CrossAttention(nn.Module):
+    """
+    Cross-attention module to summarize spatial tokens into frame-level representations , instead of just taking mean across spatial tokens
+    """
     def __init__(self, dim, max_frames=32, num_heads=4):
         super().__init__()
         self.max_frames = max_frames
@@ -246,7 +249,6 @@ class CrossAttention(nn.Module):
 
         # Multihead attention: output (B*T, 1, D)
         out, _ = self.cross_attn(q, k, v)             # (B*T, 1, D)
-
         # Final reshape: (B, T, D)
         out = rearrange(out, '(b t) 1 d -> b t d', b=B, t=self.max_frames)
         return out
