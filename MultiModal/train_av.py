@@ -22,11 +22,12 @@ train_dataset = av_dataset.CELEB_AV(
     csv_file=cfg.trainer.csv_file,
     subset="train",
     # modality_drop_rate=cfg.trainer.modality_drop_rate,
-    modality_drop_rate=0,
+    modality_drop_rate=0.5,
 
     preprocessed_dir=cfg.trainer.preprocessed_dir,
     num_frames=cfg.trainer.num_frames,
-    debug=False
+    debug=False,
+    dataset_type="FakeAvCeleb"
 )
 
 val_dataset = av_dataset.CELEB_AV(
@@ -36,13 +37,14 @@ val_dataset = av_dataset.CELEB_AV(
     modality_drop_rate=0,
     preprocessed_dir=cfg.trainer.preprocessed_dir,
     num_frames=cfg.trainer.num_frames,
-    debug=False
+    debug=False,
+    dataset_type="FakeAvCeleb"
 )
 
 
 SAVE_DIR = cfg.trainer.logg_dir
-version="OversamplingBalancedBatchSampler_accumulate_grad_batches_correctROI_128"
-EXPERIMENT_NAME = "lip_stream/fine_tune_AVSREAM/Start_2_unfreezed_split_by_source"
+version="correctROI_128_ModalDrop_Features_add_GatedFuss_CorrectDropout"
+EXPERIMENT_NAME = "lip_stream/fine_tune_AVSREAM/Start_4V2A_unfreezed_split_by_source"
 logger = TensorBoardLogger(
         save_dir=SAVE_DIR,
         name=EXPERIMENT_NAME,
@@ -67,7 +69,7 @@ train_loader = torch.utils.data.DataLoader(train_dataset, batch_sampler=sampler,
 val_loader = torch.utils.data.DataLoader(
     val_dataset,
     batch_size=cfg.trainer.batch_size,
-    num_workers=0   ,          # <— use 0 or 1
+    num_workers=8   ,          # <— use 0 or 1
     pin_memory=False,       # <— turn off for validation
     shuffle=False,
     persistent_workers=False
@@ -77,7 +79,13 @@ val_loader = torch.utils.data.DataLoader(
 steps_per_epoch = len(train_loader)
 print(f"Steps per epoch: {steps_per_epoch}")
 
-av_model=lip_sync_stream.lip_sync_stream(cfg,debug=False,steps_per_epoch=steps_per_epoch,unfreezed_conformers=2)
+av_model=lip_sync_stream.lip_sync_stream(cfg,
+                                         debug=False,
+                                         steps_per_epoch=steps_per_epoch,
+                                         unfreezed_conformers=2,
+                                         gated_fusion=True,
+                                         feature_add=True
+                                         )
 
 best_model_callback = ModelCheckpoint(
     dirpath=os.path.join(ckpt_saved_path,'checkpoints/'),
@@ -107,6 +115,6 @@ trainer = pl.Trainer(
         accumulate_grad_batches=6
     )
 
-ckpt_path="/home/manik/Documents/experiments/av_stream/lip_stream/fine_tune_AVSREAM/Start_4_unfreezed_split_by_source/OversamplingBalancedBatchSampler/checkpoints/last.ckpt"
+# ckpt_path="/home/manik/Documents/experiments/av_stream/lip_stream/fine_tune_AVSREAM/Start_2_unfreezed_split_by_source/correctROI_128_ModalDrop_crossAtten_12/checkpoints/last.ckpt"
 # trainer.fit(av_model,train_dataloaders=train_loader,val_dataloaders=val_loader,ckpt_path=ckpt_path)
 trainer.fit(av_model,train_dataloaders=train_loader,val_dataloaders=val_loader) 

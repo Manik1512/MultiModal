@@ -7,7 +7,7 @@ import torch
 import torchmetrics
 from hydra import initialize, compose
 from torch import nn
-import torch.functional as F
+import torch.nn.functional as F
 from einops import rearrange
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 import torchmetrics# from torchmetrics.classification import (
@@ -72,16 +72,16 @@ class CrossAttention(nn.Module):
             
 
         else :
-            # (b, n, dim) -> (b, n, h*d) -> (b, h, n, d)
+            # (b, n, dim) -> (b, n, h*d)
             q = self.to_q(x)
-            q = rearrange(q, 'b n (h d) -> b h n d', h=self.heads)
+            # q = rearrange(q, 'b n (h d) -> b h n d', h=self.heads)
         
 
         # (b, m, dim) -> (b, m, h*d*2)
         k, v = self.to_kv(context).chunk(2, dim=-1)
 
         # (b, m, h*d) -> (b, h, m, d)
-        q = rearrange(q, 'b n (h d) -> b h n d', h=self.heads)
+        q = rearrange(q, 'b n (h d) -> b h n d', h=self.heads) # (b, n, h*d) -> (b, h, n, d)
         k = rearrange(k, 'b n (h d) -> b h n d', h=self.heads)
         v = rearrange(v, 'b n (h d) -> b h n d', h=self.heads)
 
@@ -107,14 +107,15 @@ class GatedFusion(nn.Module):
                  dim
                  ):
         super().__init__()
-        self.gate_layer=nn.Linear(dim*2,dim)
+        self.gate_layer=nn.Linear(dim*2,dim,bias=True)
         self.sigmoid=nn.Sigmoid()
+        self.norm = nn.LayerNorm(dim)
 
-    def forward(self,x_orig,x_atte):
+    def forward(self,x1,x2):
         "Input=Output->(B,T,D)"
-        alpha=self.sigmoid(self.gate_layer(torch.cat((x_orig, x_atte), dim=-1)))
-        fused_output = (alpha * x_atte) + ((1 - alpha) * x_orig)
-        return fused_output
+        alpha=self.sigmoid(self.gate_layer(torch.cat((x1, x2), dim=-1)))
+        fused_output = (alpha * x2) + ((1 - alpha) * x1)
+        return self.norm(fused_output)
         
 
 
@@ -166,7 +167,7 @@ class GatedFusion(nn.Module):
 
 
 class Feature_extraction_av(LightningModule):
-    def __init__(self, cfg,debug):
+    def __init__(self, cfg,debug,cross_attention=False,feature_add=False,gated_fusion=False):
         super().__init__()
         self.save_hyperparameters(cfg)
         self.cfg = cfg
@@ -175,13 +176,47 @@ class Feature_extraction_av(LightningModule):
         self.token_list = self.text_transform.token_list
         self.model = E2E(len(self.token_list), self.backbone_args)
         self.debug=debug
+        self.gated_fusion=gated_fusion
+        self.feature_add=feature_add
+        if self.feature_add:
+            self.feature_dim=self.cfg.model.lip_sync_model.feature_dim//2
+            self.audio_norm=nn.LayerNorm(self.feature_dim)
+            self.video_norm=nn.LayerNorm(self.feature_dim)
+            if self.gated_fusion:
+                self.fusion_layer=GatedFusion(self.feature_dim)
+        else:
+            self.feature_dim=self.cfg.model.lip_sync_model.feature_dim
 
+        self.cross_attention=cross_attention
+        if self.cross_attention:
+            self.audio_stream_CrossAtten=CrossAttention(dim=self.feature_dim, heads=12, dim_head=self.feature_dim//12, dropout=0.2,attention_pooling=False)
+            self.video_stream_CrossAtten=CrossAttention(dim=self.feature_dim, heads=12, dim_head=self.feature_dim//12, dropout=0.2,attention_pooling=False)
+
+        
+        
     def forward(self, video, audio):
         # print("in forward of feature extraction , video=>",video)
         video_feat, _ = self.model.encoder(video.unsqueeze(0).to(self.device), None)
         audio_feat, _ = self.model.aux_encoder(audio.unsqueeze(0).to(self.device), None)
+
+        if self.cross_attention:
+            audio_cross=self.audio_stream_CrossAtten(audio_feat,video_feat)
+            video_cross=self.video_stream_CrossAtten(video_feat,audio_feat)
+
+            # residual connection
+            audio_feat=audio_feat+audio_cross  
+            video_feat=video_feat+video_cross
         
-        audiovisual_feat = self.model.fusion(torch.cat((video_feat, audio_feat), dim=-1))
+        if self.feature_add:
+            audio_feat=self.audio_norm(audio_feat)
+            video_feat=self.video_norm(video_feat)
+            if self.gated_fusion:
+                fused_feat=self.fusion_layer(audio_feat,video_feat)
+            else:
+                fused_feat=audio_feat+video_feat
+        else:
+            fused_feat=torch.concat((video_feat,audio_feat),dim=-1)
+        audiovisual_feat = self.model.fusion(fused_feat)
 
         if self.debug:
             print("video shape before fusion",video_feat.shape)
@@ -202,17 +237,25 @@ class lip_sync_stream(LightningModule):
                  debug,
                  steps_per_epoch=None,
                  unfreezed_conformers=4,
-                 gatedAudioVisualFusion=False
+                 gatedAudioVisualFusion=False,
+                 feature_add=False,
+                 gated_fusion=False
 
                  ):
         super().__init__()
         self.save_hyperparameters(cfg)
         self.cfg = cfg
-        self.feature_dim=self.cfg.model.lip_sync_model.feature_dim
-        self.feature_extractor = Feature_extraction_av(cfg,debug=debug)
+        self.feature_add=feature_add
+        if feature_add:
+            self.feature_dim=self.cfg.model.lip_sync_model.feature_dim//2
+        else: 
+            self.feature_dim=self.cfg.model.lip_sync_model.feature_dim
+        self.feature_extractor = Feature_extraction_av(cfg,debug=debug,cross_attention=False,feature_add=feature_add,gated_fusion=gated_fusion)
         self.feature_norm = nn.LayerNorm(self.feature_dim)
         self.feature_extractor.load_weights(self.cfg.model.lip_sync_model.avsr_path)
+
         print(f"shape of extracted features from FeatExtr=>{self.feature_dim}" if debug else "")
+
         self.classifier = nn.Sequential(
             nn.Linear(self.feature_dim, 128),
             nn.LayerNorm(128),
@@ -254,7 +297,7 @@ class lip_sync_stream(LightningModule):
                 layer=nn.Identity()
             count=count+1
         count=0
-
+        unfreezed_conformers=6
         for layer in self.feature_extractor.model.encoder.encoders:
 
             if count <unfreezed_conformers:
@@ -288,7 +331,8 @@ class lip_sync_stream(LightningModule):
         features = torch.mean(features, dim=1)   #MEAN over time dimesnion (B, T, D) -> (B, D)
         if self.debug:
             print("shape after mean ",features.shape)
-        features = self.feature_norm(features)
+        if not self.feature_add:
+            features = self.feature_norm(features)
         logits=self.classifier(features)
         return logits
     
@@ -512,6 +556,7 @@ class lip_sync_stream(LightningModule):
         print("="*50 + "\n")
 
         # It's good practice to reset the metric after computing
+        self.test_tp = self.test_fp = self.test_fn = self.test_tn = 0
         self.test_auc.reset()
 
 
@@ -533,7 +578,7 @@ if __name__ == "__main__":
     print("output shape", features.shape)
 
 
-    # summary(model, input_size=[video.shape,audio.shape])
+    summary(model, input_size=[video.shape,audio.shape])
 
     # print(model.feature_extractor.model.aux_encoder.encoders[0])
 

@@ -8,6 +8,8 @@ from IPython.display import HTML
 from base64 import b64encode
 import sys, subprocess
 import argparse
+import cv2
+import shlex
 
 def play_video(video_path, width=200):
     mp4 = open(video_path,'rb').read()
@@ -63,16 +65,22 @@ def preprocess_video(input_video_path, output_video_path, face_predictor_path, m
     elif '(European)' in input_video_path:
         input_video_path = input_video_path.replace(' (European)', '\ \(European\)')
         audio_fn = audio_fn.replace(' (European)', '\ \(European\)')
-    cmd = "/usr/bin/ffmpeg" + " -i " + input_video_path+'/'+output_video_path + " -f wav -vn -y " + audio_fn + ' -loglevel quiet'
-    subprocess.call(cmd, shell=True)
-    # print(input_video_path + '/' + output_video_path)
+    # cmd = "/usr/bin/ffmpeg" + " -i " + input_video_path+'/'+output_video_path + " -f wav -vn -y " + audio_fn + ' -loglevel quiet'
+    # subprocess.call(cmd, shell=True)
+
     return
 
 
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('--category', default='rvra')
 args = parser.parse_args()
+
+
 PATH_TO_DIRECTORY = '/home/manik/Downloads/FakeAVCeleb_v1.2/'
+PATH_TO_DIRECTORY = '/home/manik/Downloads/DeepfakeTIMIT/higher_quality/'
+
+
+
 category = args.category
 face_predictor_path = "/home/manik/Documents/MultiModal/MultiModal/misc/shape_predictor_68_face_landmarks.dat"
 mean_face_path = "/home/manik/Documents/MultiModal/MultiModal/misc/20words_mean_face.npy"
@@ -86,13 +94,14 @@ elif category == 'fvfa':
     input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-FakeAudio')
 
 elif category == 'other':
-    input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','African','men')
-    input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','Asian (East)')
-    input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','Asian (South)')
+    # input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','African','men')
+    # input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','Asian (East)')
+    # input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','Asian (South)')
     
-    input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','Caucasian (American)')
-    input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','African','women')
-    input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','Caucasian (European)')
+    # input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','Caucasian (American)')
+    # input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','African','women')
+    # input_root = os.path.join(PATH_TO_DIRECTORY, 'FakeVideo-RealAudio','Caucasian (European)')
+    input_root=PATH_TO_DIRECTORY
 
 
 else:
@@ -104,12 +113,12 @@ count = 0
 for root, dirs, files in tqdm(to_iterate, total=len(to_iterate)):
     flag = False
     for file in files:
-        if file.endswith('.mp4') and not file.endswith('_roi.mp4'):
+        if file.endswith('.avi') and not file.endswith('_roi.mp4'):
             count += 1
             preprocess_video(input_video_path=root, output_video_path=file, face_predictor_path=face_predictor_path,
                              mean_face_path=mean_face_path)
 
-
+    
 
 
 

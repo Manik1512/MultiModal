@@ -35,9 +35,9 @@ class ModalityDropout(torch.nn.Module):
         super().__init__()
         self.p = p
 
-    def forward(self, x):
-        if torch.rand(1).item() < self.p:
-            return torch.zeros_like(x),torch.tensor(1, dtype=torch.long, requires_grad=False)
+    def forward(self, x,type):
+        if torch.rand(1).item() < self.p and type!="RealVideo-FakeAudio":
+            return torch.zeros_like(x),torch.tensor(1, dtype=torch.long, requires_grad=False) #returns new tensor that matches x's properties
         return x,torch.tensor(0, dtype=torch.long, requires_grad=False)
 
 
@@ -125,9 +125,9 @@ class VideoTransform:
         return self.video_pipeline(sample)
 
 class AudioTransform:
-    """
+    """1
     It returns a flag too , keep in mind while using it
-    flag->1 means audio is dropped
+    flag->1 means audio is dropped -> return audio tensor with all zeroes
     flag->0 means audio is not dropped
     """
     def __init__(self, subset, snr_target=None,modality_drop_rate=None):
@@ -154,14 +154,14 @@ class AudioTransform:
             )
             self.time_mask = None
 
-    def __call__(self, sample):
+    def __call__(self, sample,type):
         # sample: T x 1
         flag=torch.tensor(0, dtype=torch.long, requires_grad=False)
         if self.time_mask:
             sample = self.time_mask(sample)
 
         if self.dropout:
-            sample, flag = self.dropout(sample)
+            sample, flag = self.dropout(sample,type)
         # if self.noise:
         #     sample = self.noise(sample)
         sample = self.norm(sample)

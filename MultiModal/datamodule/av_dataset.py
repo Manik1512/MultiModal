@@ -7,7 +7,6 @@ and read a single video from dataset and return all video frames and its corresp
 
 import os
 import torch
-import torch.utils.data.dataloader
 import torchvision
 import pandas as pd 
 import numpy as np 
@@ -34,8 +33,10 @@ def load_video(path, processed_dir=None,debug=True,audio_path=None):
 
     try:
         audio, sample_rate = torchaudio.load(audio_path)
+        
         if audio.size(0) > 1:
             audio = audio.mean(dim=0, keepdim=True)
+
     except Exception as e:
         print(f"[Warning] Could not load audio: {audio_path}. Error: {e}")
         audio = torch.zeros((1, 16000))
@@ -64,7 +65,9 @@ class CELEB_AV(torch.utils.data.Dataset):
         unprocessed_dir=None,
         preprocessed_dir=None,
         subset="train",
-        modality_drop_rate=0.9
+        modality_drop_rate=0.0,
+        deepfake_type=None,
+        dataset_type="directory_based"
     
         
     ):
@@ -79,13 +82,21 @@ class CELEB_AV(torch.utils.data.Dataset):
         self.modality_drop_rate=modality_drop_rate
         self.audio_transform=transforms.AudioTransform(self.subset,modality_drop_rate=self.modality_drop_rate)
         self.video_transform=transforms.VideoTransform(self.subset)
+        self.dataset_type=dataset_type
 
-        if self.subset == "train":
+        if self.subset == "train" and dataset_type=="FakeAvCeleb":
             self.df= df[df["split_by_source"] == "train"].reset_index(drop=True)
-        elif self.subset == "val":
+        elif self.subset == "val" and dataset_type=="FakeAvCeleb":
             self.df= df[df["split_by_source"] == "val"].reset_index(drop=True)
-        elif self.subset == "test":
+        elif self.subset == "test" and deepfake_type is None and dataset_type=="FakeAvCeleb":
             self.df= df[df["split_by_source"] == "test"].reset_index(drop=True)
+
+        elif self.subset == "test" and deepfake_type is not None and dataset_type=="FakeAvCeleb" :
+            self.df = df[(df["split_by_source"] == "test") & (df['type'] == deepfake_type)].reset_index(drop=True)
+            # self.df=self.df[self.df['method']=='faceswap'].reset_index(drop=True)  # to limit to only faceswap method for specific deepfake type
+
+        elif dataset_type=="directory_based":
+            self.df=df.reset_index(drop=True)
         else:   
             raise ValueError("subset must be one of 'train', 'val', or 'test'")
 
@@ -134,35 +145,42 @@ class CELEB_AV(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
+        if self.dataset_type=="FakeAvCeleb":
+            
+            video_path = row["path"]
+            type=row["type"]
+            race=row["race"]
+            gender=row["gender"]
+            id=row["source"]
+            method = str(row["method"]).lower()
+            type=str(row["type"])
+            if self.processed_dir:
+                video_path = os.path.join(self.processed_dir,type,race,gender,id,video_path)
+                audio_path = os.path.splitext(video_path)[0] + ".wav"
+                base, ext = os.path.splitext(video_path)
+                video_path = f"{base}_roi{ext}"
+                
 
-        video_path = row["path"]
-        type=row["type"]
-        race=row["race"]
-        gender=row["gender"]
-        id=row["source"]
+        elif self.dataset_type=="directory_based":
+            video_path=str(row["video_path"])
+            audio_path=str(row["audio_path"])
+            method = str(row["method"]).lower()
+            type="other"
 
-        if self.root_dir:
-            # video_path = os.path.join(self.root_dir,type,race,gender,id,video_path)
-            video_path = os.path.join(self.root_dir,type,race,gender,id,video_path)
-
-        if self.processed_dir:
-            video_path = os.path.join(self.processed_dir,type,race,gender,id,video_path)
-            audio_path = os.path.splitext(video_path)[0] + ".wav"
-            base, ext = os.path.splitext(video_path)
-            video_path = f"{base}_roi{ext}"
 
         if self.debug:
             print(video_path)
+
         video,audio = load_video(video_path,self.processed_dir,self.debug,audio_path)
-
         video, audio = self.sample_frames(video, audio)
-
         video = self.video_transform(video)
-        audio ,flag= self.audio_transform(audio)
+        audio ,flag= self.audio_transform(audio,type=type)
+
+
         if self.debug:
             print("flag value",flag)
 
-        method = str(row["method"]).lower()
+        
 
         target = torch.tensor(0) if method == "real" else torch.tensor(1)
 
@@ -176,7 +194,8 @@ class CELEB_AV(torch.utils.data.Dataset):
         return {
             "video": video,    # [T, C, H, W]
             "audio": audio,    # [T, 1]
-            "target": target   # scalar label
+            "target": target ,  # scalar label
+            "flag": flag  # audio dropped or not
         }
         
 
