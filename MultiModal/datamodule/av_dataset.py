@@ -10,7 +10,7 @@ import torch
 import torchvision
 import pandas as pd 
 import numpy as np 
-
+import random
 # import sampler   #uncomment this when running independently
 # import transforms  #uncomment this when running independently
 
@@ -33,6 +33,15 @@ def load_video(path, processed_dir=None,debug=True,audio_path=None):
 
     try:
         audio, sample_rate = torchaudio.load(audio_path)
+        
+        if sample_rate != 16000:
+            resampler = torchaudio.transforms.Resample(
+                orig_freq=sample_rate,
+                new_freq=16000
+            )
+            audio = resampler(audio)
+            # print(sample_rate)
+            sample_rate = 16000
         
         if audio.size(0) > 1:
             audio = audio.mean(dim=0, keepdim=True)
@@ -67,7 +76,9 @@ class CELEB_AV(torch.utils.data.Dataset):
         subset="train",
         modality_drop_rate=0.0,
         deepfake_type=None,
-        dataset_type="directory_based"
+        dataset_type="directory_based",
+        a_drop=False,
+        v_drop=False
     
         
     ):
@@ -80,8 +91,8 @@ class CELEB_AV(torch.utils.data.Dataset):
         self.processed_dir=preprocessed_dir if preprocessed_dir else None
         self.subset=subset
         self.modality_drop_rate=modality_drop_rate
-        self.audio_transform=transforms.AudioTransform(self.subset,modality_drop_rate=self.modality_drop_rate)
-        self.video_transform=transforms.VideoTransform(self.subset)
+        self.audio_transform=transforms.AudioTransform(self.subset,modality_drop_rate=self.modality_drop_rate,audio_drop=a_drop)
+        self.video_transform=transforms.VideoTransform(self.subset,video_drop=v_drop)
         self.dataset_type=dataset_type
 
         if self.subset == "train" and dataset_type=="FakeAvCeleb":
@@ -99,6 +110,10 @@ class CELEB_AV(torch.utils.data.Dataset):
             self.df=df.reset_index(drop=True)
         else:   
             raise ValueError("subset must be one of 'train', 'val', or 'test'")
+
+        self.dropout=transforms.ModalityDropout(p=self.modality_drop_rate)
+        self.a_drop=a_drop
+        self.v_drop=v_drop
 
     def sample_frames(self, video, audio):
         """
@@ -159,7 +174,8 @@ class CELEB_AV(torch.utils.data.Dataset):
                 audio_path = os.path.splitext(video_path)[0] + ".wav"
                 base, ext = os.path.splitext(video_path)
                 video_path = f"{base}_roi{ext}"
-                
+            
+            # print(video_path)
 
         elif self.dataset_type=="directory_based":
             video_path=str(row["video_path"])
@@ -171,12 +187,19 @@ class CELEB_AV(torch.utils.data.Dataset):
         if self.debug:
             print(video_path)
 
+        # modality_to_drop = random.choice([0, 1])  #if 0 then video , if 1 then drop audio 
+
         video,audio = load_video(video_path,self.processed_dir,self.debug,audio_path)
         video, audio = self.sample_frames(video, audio)
-        video = self.video_transform(video)
-        audio ,flag= self.audio_transform(audio,type=type)
+        video = self.video_transform(video,type=type)
+        audio = self.audio_transform(audio,type=type)
 
+        # if modality_to_drop==0:
+        #     video,video_flag=self.dropout(video)
+        # else :
+        #     audio,audio_flag=self.dropout(audio)
 
+        audio,video,flag=self.dropout(audio=audio,video=video,type=type)
         if self.debug:
             print("flag value",flag)
 

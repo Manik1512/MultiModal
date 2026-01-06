@@ -29,16 +29,31 @@ DICT_PATH = os.path.join(
     "unigram",
     "unigram5000_units.txt",
 )
-
+count=0
 class ModalityDropout(torch.nn.Module):
     def __init__(self, p):  # probability of dropping audio
         super().__init__()
         self.p = p
 
-    def forward(self, x,type):
-        if torch.rand(1).item() < self.p and type!="RealVideo-FakeAudio":
-            return torch.zeros_like(x),torch.tensor(1, dtype=torch.long, requires_grad=False) #returns new tensor that matches x's properties
-        return x,torch.tensor(0, dtype=torch.long, requires_grad=False)
+    def forward(self,audio,video,type):
+        # global count
+        # if torch.rand(1).item() < self.p and str(type)!="RealVideo-FakeAudio":
+        #     return torch.zeros_like(x),torch.tensor(1, dtype=torch.long, requires_grad=False) #returns new tensor that matches x's properties
+        # # if str(type)=="RealVideo-FakeAudio":
+        # #     count+=1
+        # #     print("helllllohelllllohelllllohelllllohelllllohelllllohelllllohelllllo")
+        # #     print(count)
+        # return x,torch.tensor(0, dtype=torch.long, requires_grad=False)
+
+
+        #audio,video,flag
+        decision=torch.rand(1, device=audio.device)
+        if decision < self.p / 2 and  str(type)!="RealVideo-FakeAudio":
+            return torch.zeros_like(audio), video, torch.tensor(1, dtype=torch.long, requires_grad=False)  # drop audio
+        elif decision < self.p and str(type)!="FakeVideo-RealAudio":
+            return audio, torch.zeros_like(video), torch.tensor(2, dtype=torch.long, requires_grad=False) # drop video
+        return audio, video, torch.tensor(0, dtype=torch.long, requires_grad=False)  # no drop
+
 
 
 class FunctionalModule(torch.nn.Module):
@@ -101,17 +116,26 @@ class AddNoise(torch.nn.Module):
 
 
 class VideoTransform:
-    def __init__(self, subset):
+    def __init__(self, subset,video_drop=False):
+        self.video_drop=False
         if subset == "train":
             self.video_pipeline = torch.nn.Sequential(
                 FunctionalModule(lambda x: x / 255.0),
                 torchvision.transforms.RandomCrop(88),
                 torchvision.transforms.Grayscale(),
-                torchvision.transforms.RandomHorizontalFlip(p=0.5),
+                # torchvision.transforms.RandomHorizontalFlip(p=0.5),
                 AdaptiveTimeMask(5, 25),
                 torchvision.transforms.Normalize(0.421, 0.165),
             )
-        elif subset == "val" or subset == "test":
+        elif subset == "val" :
+            self.video_pipeline = torch.nn.Sequential(
+                FunctionalModule(lambda x: x / 255.0),
+                torchvision.transforms.CenterCrop(88),
+                torchvision.transforms.Grayscale(),
+                torchvision.transforms.Normalize(0.421, 0.165),
+            )
+        elif subset == "test":
+            self.video_drop=video_drop
             self.video_pipeline = torch.nn.Sequential(
                 FunctionalModule(lambda x: x / 255.0),
                 torchvision.transforms.CenterCrop(88),
@@ -119,10 +143,16 @@ class VideoTransform:
                 torchvision.transforms.Normalize(0.421, 0.165),
             )
 
-    def __call__(self, sample):
+        
+
+    def __call__(self, sample,type):
         # sample: T x C x H x W
         # rtype: T x 1 x H x W
-        return self.video_pipeline(sample)
+        out=self.video_pipeline(sample)
+        if self.video_drop and str(type)!="FakeVideo-RealAudio":
+            # print("Dropping video modality")
+            return torch.zeros_like(out)
+        return out
 
 class AudioTransform:
     """1
@@ -130,10 +160,12 @@ class AudioTransform:
     flag->1 means audio is dropped -> return audio tensor with all zeroes
     flag->0 means audio is not dropped
     """
-    def __init__(self, subset, snr_target=None,modality_drop_rate=None):
+    def __init__(self, subset, snr_target=None,modality_drop_rate=None,audio_drop=False):
+        self.audio_drop=False
         if subset == "train":
             self.time_mask = AdaptiveTimeMask(3200, 16000)
-            self.dropout = ModalityDropout(p=modality_drop_rate)   # will output (x, flag)
+            # self.dropout = ModalityDropout(p=modality_drop_rate)   # will output (x, flag)
+            self.dropout=False
             self.noise = AddNoise()
             self.norm = FunctionalModule(
                 lambda x: torch.nn.functional.layer_norm(x, x.shape, eps=1e-8)
@@ -141,6 +173,7 @@ class AudioTransform:
         elif subset == "val":
             self.noise = AddNoise(snr_target=snr_target) if snr_target is not None else None
             # self.dropout = ModalityDropout(p=modality_drop_rate)
+            self.dropout=False
             self.norm = FunctionalModule(
                 lambda x: torch.nn.functional.layer_norm(x, x.shape, eps=1e-8)
             )
@@ -153,19 +186,23 @@ class AudioTransform:
                 lambda x: torch.nn.functional.layer_norm(x, x.shape, eps=1e-8)
             )
             self.time_mask = None
+            self.audio_drop=audio_drop
 
     def __call__(self, sample,type):
         # sample: T x 1
-        flag=torch.tensor(0, dtype=torch.long, requires_grad=False)
+        # flag=torch.tensor(0, dtype=torch.long, requires_grad=False)
         if self.time_mask:
             sample = self.time_mask(sample)
 
-        if self.dropout:
-            sample, flag = self.dropout(sample,type)
+        # if self.dropout:
+        #     sample, flag = self.dropout(sample,type)
         # if self.noise:
         #     sample = self.noise(sample)
         sample = self.norm(sample)
-        return sample, flag
+        if self.audio_drop and str(type)!="RealVideo-FakeAudio":
+            # print("Dropping audio modality")
+            sample=torch.zeros_like(sample)
+        return sample
     
 
 class TextTransform:
@@ -206,8 +243,11 @@ class TextTransform:
 
 if __name__ == "__main__":
     audio = torch.randn((69632,1))
-    audio_transform = AudioTransform("train")
+    audio_transform = AudioTransform("test",audio_drop=True)
+    video_transform=VideoTransform("test",video_drop=True)
+    # out = audio_transform(audio,type="fj")
+    # print(out[0].shape,out[1])
+    # print(out[0].item())  
 
-    out = audio_transform(audio)
-    print(out[0].shape,out[1])
-    print(out[1].item())  
+
+

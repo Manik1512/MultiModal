@@ -16,29 +16,96 @@ import matplotlib.pyplot as plt
 import gc
 
 
-class CrossAttention(nn.Module):
-    """ Cross-Attention module allowing a primary stream to attend to a secondary stream.
-        If no secondary stream is provided, it defaults to self-attention.
-        if attention_pooling is True, it uses a learnable query vector for attention pooling.
+# class CrossAttention(nn.Module):
+#     """ Cross-Attention module allowing a primary stream to attend to a secondary stream.
+#         If no secondary stream is provided, it defaults to self-attention.
+#         if attention_pooling is True, it uses a learnable query vector for attention pooling.
 
-        For consistency take , dim_heads=dim//heads, in that case => inner_dim=dim
-    """
-    def __init__(self, dim, heads=8, dim_head=64, dropout=0.0,attention_pooling=False):
+#         For consistency take , dim_heads=dim//heads, in that case => inner_dim=dim
+#     """
+#     def __init__(self, dim, heads=8, dim_head=64, dropout=0.0,attention_pooling=False):
+#         super().__init__()
+
+#         inner_dim = dim_head * heads
+#         self.heads = heads
+#         self.scale = dim_head ** -0.5  # Manual scaling is not needed for F.scaled_dot_product_attention but good practice to have
+#         self.dim_head = dim_head
+        
+#         self.dropout_rate = dropout
+#         # Keys and Values are projected from the 'context' stream in one go
+#         self.attention_pooling=attention_pooling
+#         if self.attention_pooling:
+#             self.q=nn.Parameter(torch.randn(1, dim_head*heads)) 
+#         else :
+#             self.to_q = nn.Linear(dim, inner_dim, bias=False)
+
+#         self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
+
+#         self.to_out = nn.Sequential(
+#             nn.Linear(inner_dim, dim),
+#             nn.Dropout(dropout)
+#         )
+
+#     def forward(self, x, context=None, mask=None):
+#         """
+#         Args:
+#             x (torch.Tensor): The primary stream(query stream).
+#                               Shape: (batch, seq_len_q, dim)
+
+#             context :        This is the second stream (key/value stream).
+#                                             If None, performs self-attention on 'x'.
+#                                             Shape: (batch, seq_len_kv, dim)
+#             mask (torch.Tensor, optional): Boolean attention mask. Not typically used
+#                                            in cross-attention but included for completeness.
+#                                            Shape: (batch, seq_len_q, seq_len_kv)
+
+#         Returns:
+#             torch.Tensor: The output tensor after attention.
+#                           Shape: (batch, seq_len_q, dim)
+#         """
+#         # If no context is provided, default to self-attention
+#         # This makes the module more versatile
+#         context = context if context is not None else x
+
+#         if self.attention_pooling:
+#             q = self.q.unsqueeze(0).repeat(x.shape[0], 1, 1)  # (b, 1, inner_dim)  ,inner_dim=heads*dim_head
+            
+
+#         else :
+#             # (b, n, dim) -> (b, n, h*d)
+#             q = self.to_q(x)
+#             # q = rearrange(q, 'b n (h d) -> b h n d', h=self.heads)
+        
+
+#         # (b, m, dim) -> (b, m, h*d*2)
+#         k, v = self.to_kv(context).chunk(2, dim=-1)
+
+#         # (b, m, h*d) -> (b, h, m, d)
+#         q = rearrange(q, 'b n (h d) -> b h n d', h=self.heads) # (b, n, h*d) -> (b, h, n, d)
+#         k = rearrange(k, 'b n (h d) -> b h n d', h=self.heads)
+#         v = rearrange(v, 'b n (h d) -> b h n d', h=self.heads)
+
+#         out = F.scaled_dot_product_attention(
+#             q, k, v, attn_mask=mask, dropout_p=self.dropout_rate if self.training else 0.0
+#         )
+
+        
+#         if self.attention_pooling:
+#             out = out.squeeze(1)  # (b, dim)
+#         # (b, h, n, d) -> (b, n, h*d)
+#         out = rearrange(out, 'b h n d -> b n (h d)')
+#         return self.to_out(out)
+
+class AttentionPooling(nn.Module):
+    def __init__(self, dim, heads, dim_head, dropout=0.0):
         super().__init__()
-
         inner_dim = dim_head * heads
         self.heads = heads
-        self.scale = dim_head ** -0.5  # Manual scaling is not needed for F.scaled_dot_product_attention but good practice to have
         self.dim_head = dim_head
         
         self.dropout_rate = dropout
-        # Keys and Values are projected from the 'context' stream in one go
-        self.attention_pooling=attention_pooling
-        if attention_pooling:
-            self.q=nn.Parameter(torch.randn(1, dim_head*heads)) 
-        else :
-            self.to_q = nn.Linear(dim, inner_dim, bias=False)
-
+        
+        self.q=nn.Parameter(torch.randn(1, dim_head*heads)) 
         self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
 
         self.to_out = nn.Sequential(
@@ -46,57 +113,23 @@ class CrossAttention(nn.Module):
             nn.Dropout(dropout)
         )
 
-    def forward(self, x, context=None, mask=None):
-        """
-        Args:
-            x (torch.Tensor): The primary stream(query stream).
-                              Shape: (batch, seq_len_q, dim)
-
-            context :        This is the second stream (key/value stream).
-                                            If None, performs self-attention on 'x'.
-                                            Shape: (batch, seq_len_kv, dim)
-            mask (torch.Tensor, optional): Boolean attention mask. Not typically used
-                                           in cross-attention but included for completeness.
-                                           Shape: (batch, seq_len_q, seq_len_kv)
-
-        Returns:
-            torch.Tensor: The output tensor after attention.
-                          Shape: (batch, seq_len_q, dim)
-        """
-        # If no context is provided, default to self-attention
-        # This makes the module more versatile
-        context = context if context is not None else x
-
-        if self.attention_pooling:
+    def forward(self,x,mask=None):
+            # x : (b, n, dim)
             q = self.q.unsqueeze(0).repeat(x.shape[0], 1, 1)  # (b, 1, inner_dim)  ,inner_dim=heads*dim_head
-            
+            k, v = self.to_kv(x).chunk(2, dim=-1)
 
-        else :
-            # (b, n, dim) -> (b, n, h*d)
-            q = self.to_q(x)
-            # q = rearrange(q, 'b n (h d) -> b h n d', h=self.heads)
-        
+            # (b, m, h*d) -> (b, h, m, d)
+            q = rearrange(q, 'b n (h d) -> b h n d', h=self.heads) # (b, 1, h*d) → (b, h, 1, d)
+            k = rearrange(k, 'b n (h d) -> b h n d', h=self.heads)
+            v = rearrange(v, 'b n (h d) -> b h n d', h=self.heads)
 
-        # (b, m, dim) -> (b, m, h*d*2)
-        k, v = self.to_kv(context).chunk(2, dim=-1)
-
-        # (b, m, h*d) -> (b, h, m, d)
-        q = rearrange(q, 'b n (h d) -> b h n d', h=self.heads) # (b, n, h*d) -> (b, h, n, d)
-        k = rearrange(k, 'b n (h d) -> b h n d', h=self.heads)
-        v = rearrange(v, 'b n (h d) -> b h n d', h=self.heads)
-
-        out = F.scaled_dot_product_attention(
-            q, k, v, attn_mask=mask, dropout_p=self.dropout_rate if self.training else 0.0
-        )
-
-        
-        if self.attention_pooling:
-            out = out.squeeze(1)  # (b, dim)
-        # (b, h, n, d) -> (b, n, h*d)
-        out = rearrange(out, 'b h n d -> b n (h d)')
-        return self.to_out(out)
-
-
+            out = F.scaled_dot_product_attention(
+                q, k, v, attn_mask=mask, dropout_p=self.dropout_rate if self.training else 0.0
+            )
+            out = out.squeeze(2)  # (b, dim)
+            out = rearrange(out, 'b h d -> b (h d)')
+            out = self.to_out(out)
+            return out
 
 
 class GatedFusion(nn.Module):
@@ -114,60 +147,16 @@ class GatedFusion(nn.Module):
     def forward(self,x1,x2):
         "Input=Output->(B,T,D)"
         alpha=self.sigmoid(self.gate_layer(torch.cat((x1, x2), dim=-1)))
+        # print("sgidfhgkshfjsh")
         fused_output = (alpha * x2) + ((1 - alpha) * x1)
         return self.norm(fused_output)
         
 
 
-# class GatedAudioVisualFusion(nn.Module):
-#     def __init__(self,
-#                  dim,
-#                  gatedFusion=False,
-#                  attentionPooling=False,
-#                  heads=8, 
-#                  dim_head=64, 
-#                  dropout=0.0,
-#                  num_frames=25
-#                  ):
-#         super().__init__()
-
-        
-#         self.AudioCrossAttention=CrossAttention(dim,heads,dim_head,dropout) 
-#         self.VideoCrossAttention=CrossAttention(dim,heads,dim_head,dropout)
-
-#         self.attentionPooling=AttentionPooling(dim,max_frames=num_frames,num_heads=heads) if attentionPooling else None
-
-#         self.AudioGatedFusion=GatedFusion(dim) if gatedFusion else None
-#         self.VideoGatedFusion=GatedFusion(dim) if gatedFusion else None
-        
-
-#     def forward(self,audio, video):
-#         audio_stream_cross_attent=self.AudioCrossAttention(audio,video)
-#         video_stream_cross_attent=self.VideoCrossAttention(video, audio)
-
-#         if self.AudioGatedFusion:
-#             fused_audio_features=self.AudioGatedFusion(audio,audio_stream_cross_attent)
-#             fused_video_features=self.VideoGatedFusion(video,video_stream_cross_attent)
-#         else :
-#             fused_audio_features=audio+audio_stream_cross_attent
-#             fused_video_features=video+video_stream_cross_attent
-
-#         x_conc=torch.concat((fused_audio_features,fused_video_features),dim=-1)
-
-#         if self.attentionPooling:
-#             pooled_features=self.attentionPooling(x_conc)
-#         else :
-#             pooled_features=torch.mean(x_conc, dim=1)
-
-#         return pooled_features
-
-            
-
-
 
 
 class Feature_extraction_av(LightningModule):
-    def __init__(self, cfg,debug,cross_attention=False,feature_add=False,gated_fusion=False):
+    def __init__(self, cfg,debug,feature_add,gated_fusion):
         super().__init__()
         self.save_hyperparameters(cfg)
         self.cfg = cfg
@@ -187,25 +176,14 @@ class Feature_extraction_av(LightningModule):
         else:
             self.feature_dim=self.cfg.model.lip_sync_model.feature_dim
 
-        self.cross_attention=cross_attention
-        if self.cross_attention:
-            self.audio_stream_CrossAtten=CrossAttention(dim=self.feature_dim, heads=12, dim_head=self.feature_dim//12, dropout=0.2,attention_pooling=False)
-            self.video_stream_CrossAtten=CrossAttention(dim=self.feature_dim, heads=12, dim_head=self.feature_dim//12, dropout=0.2,attention_pooling=False)
-
         
+
         
     def forward(self, video, audio):
         # print("in forward of feature extraction , video=>",video)
         video_feat, _ = self.model.encoder(video.unsqueeze(0).to(self.device), None)
         audio_feat, _ = self.model.aux_encoder(audio.unsqueeze(0).to(self.device), None)
 
-        if self.cross_attention:
-            audio_cross=self.audio_stream_CrossAtten(audio_feat,video_feat)
-            video_cross=self.video_stream_CrossAtten(video_feat,audio_feat)
-
-            # residual connection
-            audio_feat=audio_feat+audio_cross  
-            video_feat=video_feat+video_cross
         
         if self.feature_add:
             audio_feat=self.audio_norm(audio_feat)
@@ -237,9 +215,9 @@ class lip_sync_stream(LightningModule):
                  debug,
                  steps_per_epoch=None,
                  unfreezed_conformers=4,
-                 gatedAudioVisualFusion=False,
                  feature_add=False,
-                 gated_fusion=False
+                 gated_fusion=False,
+                 attention_pooling=False
 
                  ):
         super().__init__()
@@ -250,7 +228,7 @@ class lip_sync_stream(LightningModule):
             self.feature_dim=self.cfg.model.lip_sync_model.feature_dim//2
         else: 
             self.feature_dim=self.cfg.model.lip_sync_model.feature_dim
-        self.feature_extractor = Feature_extraction_av(cfg,debug=debug,cross_attention=False,feature_add=feature_add,gated_fusion=gated_fusion)
+        self.feature_extractor = Feature_extraction_av(cfg,debug=debug,feature_add=feature_add,gated_fusion=gated_fusion)
         self.feature_norm = nn.LayerNorm(self.feature_dim)
         self.feature_extractor.load_weights(self.cfg.model.lip_sync_model.avsr_path)
 
@@ -271,6 +249,11 @@ class lip_sync_stream(LightningModule):
         self.criterion = nn.BCEWithLogitsLoss()
         self.debug=debug
 
+        self.attention_pooling=None
+        if attention_pooling:
+            self.attention_pooling=AttentionPooling(heads=self.cfg.model.lip_sync_model.pooling_heads,
+                                                    dim_head=self.cfg.model.lip_sync_model.pooling_dk,
+                                                    dim=self.feature_dim)
         """Here you just reuse the original metric objects for validation.
             Since you cloned them for training already, no problem of overlap.
             train and val should have different metrics objects  """
@@ -280,6 +263,9 @@ class lip_sync_stream(LightningModule):
         self.feature_extractor.model.fusion=torch.nn.Identity()
         self.feature_extractor.model.ctc=torch.nn.Identity()
         self.feature_extractor.model.criterion=torch.nn.Identity()
+
+      
+
 
         for param in self.feature_extractor.parameters():
             param.requires_grad = False
@@ -328,7 +314,11 @@ class lip_sync_stream(LightningModule):
     def forward(self, video, audio):
         video = rearrange(video, 'b t c h w -> b c t h w')
         features =self.feature_extractor(video, audio)
-        features = torch.mean(features, dim=1)   #MEAN over time dimesnion (B, T, D) -> (B, D)
+
+        if self.attention_pooling is not None:
+            features = self.attention_pooling(features)
+        else:
+            features = torch.mean(features, dim=1)   #MEAN over time dimesnion (B, T, D) -> (B, D)
         if self.debug:
             print("shape after mean ",features.shape)
         if not self.feature_add:
@@ -573,7 +563,13 @@ if __name__ == "__main__":
     video= torch.randn((2,25, 1, 56, 56))
     audio=torch.randn((2,16000,1))
 
-    model = lip_sync_stream(cfg,debug=True)
+    model = lip_sync_stream(cfg,
+                                         debug=True,
+                                         unfreezed_conformers=2,
+                                         gated_fusion=False,
+                                         feature_add=True,
+                                         attention_pooling=False
+                                         )
     features=model.forward(video, audio)
     print("output shape", features.shape)
 

@@ -15,14 +15,17 @@ cfg = compose(
         config_name="config",
     )
 
-checkpoint_path="/home/manik/Documents/experiments/av_stream/lip_stream/fine_tune_AVSREAM/Start_2_unfreezed_split_by_source/correctROI_128_ModalDrop_Features_add_GatedFuss_CorrectDropout/checkpoints/best_model-epoch=14-val_loss=0.03.ckpt"
-# checkpoint_path="/home/manik/Documents/experiments/av_stream/lip_stream/fine_tune_AVSREAM/Start_2_unfreezed_split_by_source/correctROI_128_ModalDrop_Features_add_CorrectDropout/checkpoints/best.ckpt"
-# checkpoint_path="/home/manik/Documents/experiments/av_stream/lip_stream/fine_tune_AVSREAM/Start_6V2A_unfreezed_split_by_source/correctROI_128_ModalDrop_Features_add_GatedFuss_CorrectDropout/checkpoints/best.ckpt"
+checkpoint_path="/home/manik/Documents/experiments/av_stream/lip_stream/only_feature_add_True/4Conf_audioVideoDropout/checkpoints/best_model-epoch=12-val_loss=0.03.ckpt"
+checkpoint_path="/home/manik/Documents/experiments/av_stream/lip_stream/only_FeatureAddition_GatedFusion_True/4Conf_audioVideoDropout/checkpoints/best_model-epoch=23-val_loss=0.02.ckpt"
 
-checkpoint_path="/home/manik/Documents/experiments/av_stream/lip_stream/fine_tune_AVSREAM/Start_4V2A_unfreezed_split_by_source/correctROI_128_ModalDrop_Features_add_GatedFuss_CorrectDropout/checkpoints/best.ckpt"
+model = lip_sync_stream(debug=False,
+                        cfg=cfg,
+                        unfreezed_conformers=cfg.trainer.unfreezed_conformers,
+                        gated_fusion=cfg.trainer.gated_fusion,
+                        feature_add=cfg.trainer.feature_add,
+                        attention_pooling=cfg.trainer.attention_pooling)
 
 
-model = lip_sync_stream(debug=False,cfg=cfg,feature_add=True,gated_fusion=False)
 checkpoint = torch.load(checkpoint_path, map_location=lambda storage, loc: storage, weights_only=False)
 model.load_state_dict(checkpoint['state_dict'], strict=False)
 trainer = pl.Trainer(accelerator='gpu', devices=1)
@@ -31,8 +34,19 @@ trainer = pl.Trainer(accelerator='gpu', devices=1)
 if __name__ == "__main__":
     parser.add_argument("--dataset", type=str, default="FakeAvCeleb", help="dataset u r testing on")
     parser.add_argument("--dropout", type=int, default=0, help="dataset u r testing on")
+    parser.add_argument("--vdrop", action="store_true", help="drop video modality")
+    parser.add_argument("--adrop", action="store_true", help="drop audio modality")
 
-    args = parser.parse_args()
+
+    # python3 test.py --vdrop --adrop        # both True
+    # python3 test.py                        # both False
+    # python3 test.py --vdrop                # vdrop=True, adrop=False
+
+
+    args = parser.parse_args() 
+    assert not (args.vdrop and args.adrop), "Cannot drop both modalities"
+
+    
     deepfake_types = ["RealVideo-RealAudio","RealVideo-FakeAudio","FakeVideo-FakeAudio","FakeVideo-RealAudio"]
     test_datasets=[]
     if args.dataset=="FakeAvCeleb":
@@ -49,6 +63,8 @@ if __name__ == "__main__":
             debug=False,
             deepfake_type=deepfake,
             dataset_type=args.dataset,
+            a_drop=args.adrop,
+            v_drop=args.vdrop
             )
             test_datasets.append(val_dataset)
         
@@ -62,6 +78,8 @@ if __name__ == "__main__":
             debug=False,
             deepfake_type=None,
             dataset_type=args.dataset,
+            a_drop=args.adrop,
+            v_drop=args.vdrop
             )
         test_datasets.append(val_dataset)
         deepfake_types.append("FULL_dataset")
@@ -78,6 +96,8 @@ if __name__ == "__main__":
         debug=False,
         deepfake_type=None,
         dataset_type="directory_based",
+        a_drop=args.adrop,
+        v_drop=args.vdrop
         )
         test_datasets.append(val_dataset)
 
@@ -85,8 +105,8 @@ if __name__ == "__main__":
     for test_dataset in test_datasets:
         test_loader = torch.utils.data.DataLoader(
         test_dataset,
-        batch_size=64,
-        num_workers=8   ,          # <— use 0 or 1
+        batch_size=32,
+        num_workers=4   ,          # <— use 0 or 1
         pin_memory=False,       # <— turn off for validation
         shuffle=False,
         persistent_workers=False

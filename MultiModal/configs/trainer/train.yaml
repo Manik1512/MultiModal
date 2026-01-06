@@ -3,7 +3,7 @@ batch_size: 32
 learning_rate: 1e-4
 weight_decay: 1e-2
 max_epochs: 25
-modality_drop_rate: 0
+modality_drop_rate: 0.5
 num_workers: 4
 num_nodes: 1
 gpus: -1
@@ -18,3 +18,9 @@ preprocessed_dir: "/home/manik/Downloads/FakeAVCeleb_v1.2"
 csv_file: "/home/manik/Downloads/FakeAVCeleb_v1.2/split_by_source.csv"
 num_frames: 25
 logg_dir: "/home/manik/Documents/experiments/av_stream"
+gated_fusion: True
+feature_add: True
+unfreezed_conformers: 4
+attention_pooling: False
+
+

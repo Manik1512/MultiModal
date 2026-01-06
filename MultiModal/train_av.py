@@ -1,3 +1,9 @@
+version='4Conf_audioVideoDropout'
+EXPERIMENT_NAME = "lip_stream/only_FeatureAddition_GatedFusion_True"
+EXPERIMENT_NAME = "lip_stream/only_feature_add_True"
+
+
+
 import pytorch_lightning as pl 
 pl.seed_everything(42, workers=True)
 from datamodule import transforms ,sampler
@@ -21,8 +27,8 @@ train_dataset = av_dataset.CELEB_AV(
     unprocessed_dir=None,
     csv_file=cfg.trainer.csv_file,
     subset="train",
-    # modality_drop_rate=cfg.trainer.modality_drop_rate,
-    modality_drop_rate=0.5,
+    modality_drop_rate=cfg.trainer.modality_drop_rate,
+    # modality_drop_rate=0.5,
 
     preprocessed_dir=cfg.trainer.preprocessed_dir,
     num_frames=cfg.trainer.num_frames,
@@ -43,8 +49,7 @@ val_dataset = av_dataset.CELEB_AV(
 
 
 SAVE_DIR = cfg.trainer.logg_dir
-version="correctROI_128_ModalDrop_Features_add_GatedFuss_CorrectDropout"
-EXPERIMENT_NAME = "lip_stream/fine_tune_AVSREAM/Start_4V2A_unfreezed_split_by_source"
+
 logger = TensorBoardLogger(
         save_dir=SAVE_DIR,
         name=EXPERIMENT_NAME,
@@ -69,7 +74,7 @@ train_loader = torch.utils.data.DataLoader(train_dataset, batch_sampler=sampler,
 val_loader = torch.utils.data.DataLoader(
     val_dataset,
     batch_size=cfg.trainer.batch_size,
-    num_workers=8   ,          # <— use 0 or 1
+    num_workers=4   ,          # <— use 0 or 1
     pin_memory=False,       # <— turn off for validation
     shuffle=False,
     persistent_workers=False
@@ -82,10 +87,17 @@ print(f"Steps per epoch: {steps_per_epoch}")
 av_model=lip_sync_stream.lip_sync_stream(cfg,
                                          debug=False,
                                          steps_per_epoch=steps_per_epoch,
-                                         unfreezed_conformers=2,
-                                         gated_fusion=True,
-                                         feature_add=True
+                                         unfreezed_conformers=cfg.trainer.unfreezed_conformers,
+                                         gated_fusion=cfg.trainer.gated_fusion,
+                                         feature_add=cfg.trainer.feature_add,
+                                         attention_pooling=cfg.trainer.attention_pooling
                                          )
+from torchinfo import summary
+video= torch.randn((2,25, 1, 56, 56))
+audio=torch.randn((2,16000,1))
+summary(av_model, input_size=[video.shape,audio.shape])
+
+
 
 best_model_callback = ModelCheckpoint(
     dirpath=os.path.join(ckpt_saved_path,'checkpoints/'),
@@ -102,7 +114,7 @@ latest_model_callback = ModelCheckpoint(
 )
 early_stopping_callback = EarlyStopping(
     monitor='val_loss',
-    patience=7,
+    patience=4,
     mode='min'
 )
 
@@ -115,6 +127,6 @@ trainer = pl.Trainer(
         accumulate_grad_batches=6
     )
 
-# ckpt_path="/home/manik/Documents/experiments/av_stream/lip_stream/fine_tune_AVSREAM/Start_2_unfreezed_split_by_source/correctROI_128_ModalDrop_crossAtten_12/checkpoints/last.ckpt"
+# ckpt_path="/home/manik/Documents/experiments/av_stream/lip_stream/all_false/version1/checkpoints/last.ckpt"
 # trainer.fit(av_model,train_dataloaders=train_loader,val_dataloaders=val_loader,ckpt_path=ckpt_path)
 trainer.fit(av_model,train_dataloaders=train_loader,val_dataloaders=val_loader) 

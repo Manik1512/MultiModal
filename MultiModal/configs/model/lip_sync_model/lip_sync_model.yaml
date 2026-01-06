@@ -3,3 +3,5 @@ trainable_audio: False
 gated_av_fusion: False
 feature_dim: 1536
 dropout_rate: 0.5
+pooling_heads: 6
+pooling_dk: 64
